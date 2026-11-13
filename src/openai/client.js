@@ -12,9 +12,12 @@
  * @ai.hint legacy-0.2
  */
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { ApiError } from './errors.js';
 import { createHttp, readBody } from './http.js';
+import { setImageDiagnostics } from './diagnostics.js';
+import { diagnosticsDir } from '../config/paths.js';
 import {
     buildResponsesBody,
     imageGenerationTool,
@@ -327,6 +330,13 @@ export async function createClient({ config, env = process.env, signal = null, o
         idleTimeoutMs: Number.isSafeInteger(config?.timeoutMs) ? config.timeoutMs : 120_000,
         connectTimeoutMs: 30_000,
     });
+    // The raw answers are archived in the diagnostics directory of the home, so an answer that
+    // cannot be parsed can still be read afterwards.
+    if (config?.image?.parser?.archive !== false && config?.home) {
+        const configured = config.image.parser.archiveDir;
+        const dir = configured ? path.resolve(config.home, configured) : diagnosticsDir(config.home);
+        setImageDiagnostics({ dir });
+    }
     const retries = Number.isSafeInteger(config?.limits?.retries)
         ? config.limits.retries
         : (Number.isSafeInteger(config?.retries) ? config.retries : defaults.retries);
@@ -535,17 +545,24 @@ export async function createClient({ config, env = process.env, signal = null, o
 
     /**
      * The base64 payloads of an answer, whatever route it came from.
+     *
+     * When the built-in readers find nothing, the answer is offered to the AI parser: the model
+     * writes a script that walks the shape it sees and returns the payloads.
      * @param {object} result
-     * @param {{ route: string, signal?: AbortSignal|null }} meta
+     * @param {{ route: string, model?: string|null, signal?: AbortSignal|null }} meta
      * @returns {Promise<string[]>}
      * @ai.hint io
      */
-    async function payloadList(result, { route, signal: callSignal = null }) {
+    async function payloadList(result, { route, model = null, signal: callSignal = null }) {
         const failure = route === 'responses' ? responsesError(result, route) : imageErrorFromResult(result);
         if (failure) throw failure;
-        const sources = route === 'responses'
+        let sources = route === 'responses'
             ? responsesImagePayloads(result).map((value) => ({ kind: 'b64', value }))
             : imageSources(result);
+        if (!sources.length) {
+            const salvaged = await salvage(result, { route, model, signal: callSignal });
+            if (salvaged?.length) sources = salvaged;
+        }
         if (!sources.length) {
             const keys = isRecord(result) ? Object.keys(result) : [];
             const rows = Array.isArray(result?.data) ? result.data : null;
@@ -565,6 +582,43 @@ export async function createClient({ config, env = process.env, signal = null, o
             out.push((await fetchImageBytes(source.value, callSignal)).toString('base64'));
         }
         return out;
+    }
+
+    /**
+     * The second chance: the model writes a script that reads the picture out of an answer of an
+     * unusual shape, and the script runs in a sandbox.
+     *
+     * The parser is opt-out (`image.parser.enabled`), and it needs a model: `image.parser.model`,
+     * then `parserModel`, then the text model.
+     * @param {object} result
+     * @param {{ route: string, model?: string|null, signal?: AbortSignal|null }} meta
+     * @returns {Promise<Array<{kind:'b64'|'url', value:string}>|null>}
+     * @ai.hint io
+     */
+    async function salvage(result, { route, model = null, signal: callSignal = null }) {
+        const parser = config?.image?.parser ?? {};
+        if (parser.enabled === false) return null;
+        const parserModel = parser.model || config?.parserModel || config?.model || null;
+        if (!parserModel) return null;
+        try {
+            const { makeParserInvoke, parseImageResponseWithAI } = await import('./parser.js');
+            return await parseImageResponseWithAI({
+                result,
+                route,
+                model,
+                invoke: makeParserInvoke(api),
+                parserModel,
+                root: parser.root ?? process.cwd(),
+                signal: callSignal ?? signal,
+                archive: parser.archive !== false,
+                onWarn: (message) => announce({ type: 'warning', message }),
+                onArchive: (file) => announce({ type: 'diagnostics.archived', file }),
+            });
+        } catch (error) {
+            if (error?.name === 'AbortError' || error?.code === 'ABORTED') throw error;
+            announce({ type: 'warning', message: `Fallback parse failed (${error?.message ?? error}).` });
+            return null;
+        }
     }
 
     /**
@@ -688,11 +742,11 @@ export async function createClient({ config, env = process.env, signal = null, o
             });
             const failure = imageErrorFromResult(result);
             if (failure) throw failure;
-            return { payloads: await payloadList(result, { route: 'images/generations', signal: callSignal }), route: 'images/generations', raw: result };
+            return { payloads: await payloadList(result, { route: 'images/generations', model, signal: callSignal }), route: 'images/generations', raw: result };
         } catch (error) {
             if (!isRouteUnsupported(error)) throw error;
             const answer = await responsesImage({ model, prompt, size, format, background, signal: callSignal });
-            return { payloads: await payloadList(answer, { route: 'responses', signal: callSignal }), route: 'responses', raw: answer };
+            return { payloads: await payloadList(answer, { route: 'responses', model, signal: callSignal }), route: 'responses', raw: answer };
         }
     }
 
@@ -711,7 +765,7 @@ export async function createClient({ config, env = process.env, signal = null, o
             });
             const failure = imageErrorFromResult(result);
             if (failure) throw failure;
-            return { payloads: await payloadList(result, { route: 'images/edits', signal: callSignal }), route: 'images/edits', raw: result };
+            return { payloads: await payloadList(result, { route: 'images/edits', model, signal: callSignal }), route: 'images/edits', raw: result };
         } catch (error) {
             if (!isRouteUnsupported(error)) throw error;
             // A host without the edit route gets the edit as a generation with the source as a
@@ -722,27 +776,27 @@ export async function createClient({ config, env = process.env, signal = null, o
                 background: fields.background ?? null, signal: callSignal,
             });
             if (!references.length) {
-                return { payloads: await payloadList(answer, { route: 'responses', signal: callSignal }), route: 'responses', raw: answer };
+                return { payloads: await payloadList(answer, { route: 'responses', model, signal: callSignal }), route: 'responses', raw: answer };
             }
-            return { payloads: await payloadList(answer, { route: 'responses', signal: callSignal }), route: 'responses', raw: answer };
+            return { payloads: await payloadList(answer, { route: 'responses', model, signal: callSignal }), route: 'responses', raw: answer };
         }
     }
 
-    return {
+    const api = {
         /**
          * The Responses API: the text route of the CLI and the picture fallback route.
          */
         responses: {
             /**
              * @param {{ model?: string|null, instructions?: string|null, input?: unknown, tools?: object[]|null,
-             *   toolChoice?: unknown, signal?: AbortSignal|null }} params
+             *   toolChoice?: unknown, store?: boolean, signal?: AbortSignal|null }} params
              * @returns {Promise<object>}
              */
             async create({ model = null, instructions = null, input = null, tools = null, toolChoice = null,
-                signal: callSignal = null } = {}) {
+                store = false, signal: callSignal = null } = {}) {
                 const body = buildResponsesBody({
                     model: model ?? config?.model ?? null,
-                    instructions, input, tools, toolChoice,
+                    instructions, input, tools, toolChoice, store,
                 });
                 const answer = await call('responses', {
                     method: 'POST', body, kind: 'text', model: body.model,
@@ -986,6 +1040,8 @@ export async function createClient({ config, env = process.env, signal = null, o
             transport.close();
         },
     };
+
+    return api;
 }
 
 /**

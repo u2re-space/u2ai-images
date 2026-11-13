@@ -358,7 +358,7 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
 Это второй шанс вытащить картинку из ответа нестандартной формы: встроенные
 читатели знают `data[].b64_json`, `data[].url` и `b64_json`/`url` в массиве.
 
-- [ ] `src/openai/parser.js` — порт `src/openai/image-response-fallback.js`:
+- [x] `src/openai/parser.js` — порт `src/openai/image-response-fallback.js`:
       - `describeShape(value)` — компактный эскиз ответа (ключи, типы, счётчики,
         длинные строки свёрнуты в `<string N chars: head…>`);
       - `parserPrompt(shape, meta)` — промпт модели: «напиши тело одной async-функции,
@@ -375,18 +375,21 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
         parserModel, root, signal, onWarn, onArchive, archive })` — архивирует сырой
         ответ, спрашивает модель, запускает скрипт, архивирует сам скрипт,
         возвращает список источников или `null`.
-- [ ] `src/openai/parser.js` — `makeParserInvoke(client)`: единственный способ узнать
+- [x] `src/openai/parser.js` — `makeParserInvoke(client)`: единственный способ узнать
       текст — один нестриминговый вызов Responses; клиенту достаточно
       `responses.create`.
-- [ ] Модель-парсер: `image.parser.model` (или `image.parserModel`), флаг
+- [x] Модель-парсер: `image.parser.model` (или `image.parserModel`), флаг
       `image.parser.enabled` (по умолчанию `true`), `image.parser.archive`
       (по умолчанию `true`).
-- [ ] `src/openai/diagnostics.js` — порт `src/openai/image-diagnostics.js`:
+- [x] `src/openai/diagnostics.js` — порт `src/openai/image-diagnostics.js`:
       `saveImageResponse(result, { route, model, host, taskId })` и
       `saveImageParserScript(script, { route, notes })` — пишутся в
       `~/.ai-image/diagnostics/` (или в `image.parser.archiveDir`), имя —
       с меткой времени; путь возвращается в лог и в `--json`-ответ.
-- [ ] Тесты: `test/parser.test.js` — эскиз формы, извлечение скрипта из ответа
+- [x] Клиент (`src/openai/client.js`) при пустом ответе зовёт парсер сам
+      (`salvage`), архивирует сырой ответ и пишет скрипт; при отказе парсера
+      остаётся исходная ошибка `INVALID_RESPONSE`.
+- [x] Тесты: `test/parser.test.js` — эскиз формы, извлечение скрипта из ответа
       модели, нормализация всех форм payload'а, запуск скрипта в песочнице
       (в том числе отказ писать за пределы каталога), архивирование.
 
