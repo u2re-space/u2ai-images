@@ -174,18 +174,18 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
 
 ## 3. Модельные профили и система purpose
 
-- [ ] `src/model/profiles.js` — порт image-части `src/shared/model-profiles.js`:
+- [x] `src/model/profiles.js` — порт image-части `src/shared/model-profiles.js`:
       `IMAGE_MODEL_PROFILES` (gpt-image 2.5/2.6, riverflow, recraft и общий
       `DEFAULT_PROFILE`), поля профиля: `minPixels`, `maxPixels`, `maxEdge`,
       `maxRatio`, `div16Padding`, `padToMinPixels`, `resolutionTiers`,
       `customSizes`, `keepProSuffix`, `omitSizeOnReject`, `routeEditsThroughGeneration`,
       `complexity`, `paintsFakeTransparency`, `sizeHints`.
-- [ ] `src/model/profiles.js` — `imageModelProfile(model)`, `imageModelFamily(model)`,
+- [x] `src/model/profiles.js` — `imageModelProfile(model)`, `imageModelFamily(model)`,
       `MAX_IMAGE_PIXELS/EDGE/RATIO`, `MIN_IMAGE_PIXELS`.
-- [ ] `src/model/fallback.js` — `MODEL_FALLBACKS` (карта «модель → запасная»), рядом
+- [x] `src/model/fallback.js` — `MODEL_FALLBACKS` (карта «модель → запасная»), рядом
       с `src/openai/fallback.js` из декомпозитора: `fallbackChain`, `withModelFallback`,
       `fallbackModels(config, model)`.
-- [ ] `src/model/purpose.js` — **система purpose**:
+- [x] `src/model/purpose.js` — **система purpose**:
       - `PURPOSE_NAMES = ['decompose', 'isolate', 'upscale', 'generate']`;
       - `PURPOSE_MODEL_MAP` — встроенный порядок моделей на purpose (в монолите
         `decompose`/`isolate`/`upscale`/`generate`);
@@ -195,11 +195,11 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
       - перекрытие пользователем: `config.purpose.models.<purpose>` полностью
         заменяет встроенный список для этого purpose;
       - пустой purpose → `null` (остаётся `config.imageModel`).
-- [ ] **Отличие от монолита:** из встроенной карты purpose убраны модели
+- [x] **Отличие от монолита:** из встроенной карты purpose убраны модели
       `seedream-5-5` — их асинхронный маршрут (`data[0].task_id`, разложение на
       слои) в этот пакет не портируется. Любую другую модель можно вернуть через
       `purpose.models` в конфиге: purpose — это про *выбор модели*, а не про API.
-- [ ] `ai-image purpose` печатает карту и, для каждого purpose, модель,
+- [x] `ai-image purpose` печатает карту и, для каждого purpose, модель,
       разрешённую текущими бэкендами (или пометку «нет подходящего провайдера»).
 
 ---

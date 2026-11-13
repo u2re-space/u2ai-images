@@ -52,6 +52,45 @@ export function resolveBackend(backends, env = process.env) {
 }
 
 /**
+ * The hosts of one pool that can serve a request: the ones that have a key,
+ * or all of them when the whole pool is keyless.
+ * @param {object[]} pool
+ * @param {object} env
+ * @returns {string[]}
+ */
+function usableUrls(pool, env) {
+    const list = Array.isArray(pool) ? pool : [];
+    const withURL = list.filter((item) => isRecord(item) && typeof item.baseURL === 'string' && item.baseURL.trim());
+    const withKey = withURL.filter((item) => keyOf(item, env));
+    const usable = withKey.length ? withKey : withURL;
+    return usable.map((item) => item.baseURL.replace(/\/+$/, ''));
+}
+
+/**
+ * The fields the user set: the file, the environment and the flags.
+ *
+ * The loader needs to tell a value of the user from the default of the
+ * package: an explicitly chosen picture model is the choice of the user and
+ * the purpose routing must not override it.
+ * @param {...object} sources
+ * @returns {{ top: string[], image: string[] }}
+ */
+function explicitFields(...sources) {
+    const top = new Set();
+    const image = new Set();
+    for (const source of sources) {
+        if (!isRecord(source)) continue;
+        for (const [key, value] of Object.entries(source)) {
+            top.add(key);
+            if (key === 'image' && isRecord(value)) {
+                for (const field of Object.keys(value)) image.add(field);
+            }
+        }
+    }
+    return { top: [...top], image: [...image] };
+}
+
+/**
  * Resolve the effective configuration.
  * @param {{ configPath?: string|null, overrides?: object, env?: object, cwd?: string, ensureHome?: boolean }} [options]
  * @returns {Promise<object>}
@@ -77,6 +116,11 @@ export async function loadConfig({ configPath = null, overrides = {}, env = proc
     const images = resolveBackend(config.imagesBackends, env);
     config.primaryBackend = text.primary;
     config.primaryImagesBackend = images.primary;
+    config.backendUrls = [...new Set([
+        ...usableUrls(config.backends, env),
+        ...usableUrls(config.imagesBackends, env),
+    ])];
+    config.explicit = explicitFields(homeConfig, fileConfig, fromEnv(env), overrides);
 
     config.home = home;
     config.configFiles = [homeConfigFile(home), ...(explicitPath ? [explicitPath] : [])];
