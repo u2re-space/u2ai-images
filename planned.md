@@ -99,28 +99,28 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
 
 ## 1. Каркас пакета + зависимости
 
-- [ ] `package.json`: `@u2ai/images`, `bin: { "ai-image": "bin/ai-image.js" }`,
+- [x] `package.json`: `@u2ai/images`, `bin: { "ai-image": "bin/ai-image.js" }`,
       `engines: { node: ">=26" }`, `type: "module"`, deps `sharp`, `canvas`,
       `@resvg/resvg-js`, scripts: `test` = `node --test --test-timeout=60000 "test/*.test.js"`,
       `lint` = `node --check` по всем файлам `src/`.
-- [ ] `index.js` — публичный API пакета (ре-экспорт `src/index.js`), `src/index.js` —
+- [x] `index.js` — публичный API пакета (ре-экспорт `src/index.js`), `src/index.js` —
       barrel по всем модулям.
-- [ ] `bin/ai-image.{js,cmd,ps1,sh}` — обёртки под Windows/POSIX (формат как у
+- [x] `bin/ai-image.{js,cmd,ps1,sh}` — обёртки под Windows/POSIX (формат как у
       `ai-decompose`).
-- [ ] `src/cli.js`: `parseArgv` на `node:util.parseArgs` — общие флаги
+- [x] `src/cli.js`: `parseArgv` на `node:util.parseArgs` — общие флаги
       (`-c/--config`, `-o/--out`, `-v/--verbose`, `--json`, `--dry-run`, `--help`,
       `--version`) и флаги команд (`--model`, `--image-model`, `--purpose`, `--size`,
       `--resolution`, `--format`, `--background`, `--count`, `--engine`, `--alpha-mode`).
-- [ ] `src/help.js` — справка по всем командам с примерами.
-- [ ] `src/cli/colors.js`, `src/cli/renderer.js` (TTY/плоский рендерер, события),
+- [x] `src/help.js` — справка по всем командам с примерами.
+- [x] `src/cli/colors.js`, `src/cli/renderer.js` (TTY/плоский рендерер, события),
       `src/cli/compatibility.js` (проверка версии Node, коды выхода).
-- [ ] Переименовать пустой `src/stages/aligment.js` → `src/stages/alignment.js`
+- [x] Переименовать пустой `src/stages/aligment.js` → `src/stages/alignment.js`
       (опечатка в скелете; файл пока пуст, истории нет).
-- [ ] Скелет каталогов, который уже есть, приводится к плану: `src/config/`,
+- [x] Скелет каталогов, который уже есть, приводится к плану: `src/config/`,
       `src/openai/`, `src/image/`, `src/model/`, `src/roles/`, `src/stages/`,
       `src/agent/`, `src/core/`, `src/commands/`, `src/cli/`, `test/`, `examples/`.
-- [ ] `git remote add origin https://github.com/u2re-space/u2ai-images` (пуш не делаем).
-- [ ] Проверка: `node --check` по всем файлам; `--help`, `--version`, `--dry-run` → exit 0.
+- [x] `git remote add origin https://github.com/u2re-space/u2ai-images` (пуш не делаем).
+- [x] Проверка: `node --check` по всем файлам; `--help`, `--version`, `--dry-run` → exit 0.
 
 ---
 
@@ -128,10 +128,10 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
 
 Модули — по образцу `@u2ai/decomposer` (`src/config/*`), с собственным префиксом:
 
-- [ ] `constants.js` — `ENUMS` (`imageFormats`, `imageBackgrounds`, `imageSizes`,
+- [x] `constants.js` — `ENUMS` (`imageFormats`, `imageBackgrounds`, `imageSizes`,
       `resolutions`, `complexities`, `rasterEngines`, `alphaModes`, `purposes`,
       `transport`, `trimModes`), `ENV_PREFIX = 'AI_IMAGE_'`, KiB/MiB.
-- [ ] `defaults.js` — домен по умолчанию:
+- [x] `defaults.js` — домен по умолчанию:
       `model`, `imageModel`, `parserModel`, `vectorModel`, `baseURL`, `apiKey`,
       `backends[]` и `imagesBackends[]` (у каждого — `baseURL`, `apiKey`/`env`,
       `prefix`, `vendor`, `supports: {responses, chat, images}`),
@@ -144,7 +144,7 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
       `limits` (maxImageBytes, maxStdinBytes, timeoutMs, retries),
       `roles` (planner/processor/corrector/learner/decorator/vectorizer),
       `defaultConfigText()` — стартовый `config.json`.
-- [ ] `env.js` — `fromEnv()`: `AI_IMAGE_HOME`, `AI_IMAGE_CONFIG`, `AI_IMAGE_API_KEY`,
+- [x] `env.js` — `fromEnv()`: `AI_IMAGE_HOME`, `AI_IMAGE_CONFIG`, `AI_IMAGE_API_KEY`,
       `AI_IMAGE_BASE_URL`, `AI_IMAGE_MODEL`, `AI_IMAGE_IMAGE_MODEL`,
       `AI_IMAGE_PARSER_MODEL`, `AI_IMAGE_VECTOR_MODEL`, `AI_IMAGE_IMAGE_SIZE`,
       `AI_IMAGE_IMAGE_RESOLUTION`, `AI_IMAGE_IMAGE_FORMAT`, `AI_IMAGE_IMAGE_BACKGROUND`,
@@ -152,19 +152,23 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
       `AI_IMAGE_MAGICK_PATH`, `AI_IMAGE_OUTPUT_DIR`, `AI_IMAGE_BACKENDS`,
       `AI_IMAGE_IMAGES_BACKENDS`, `AI_IMAGE_RETRIES`, `AI_IMAGE_TIMEOUT_MS`;
       совместимость с `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `AI_MODEL`, `AI_IMAGE_MODEL`.
-- [ ] `merge.js` — `deepMerge`, `isRecord`, `getPath`, `setPath`.
-- [ ] `parser.js` — `readConfigFile` (BOM, ≤256 KiB, строгий JSON, отсев неизвестных
+- [x] `merge.js` — `deepMerge`, `isRecord`, `getPath`, `setPath`.
+- [x] `parser.js` — `readConfigFile` (BOM, ≤256 KiB, строгий JSON, отсев неизвестных
       разделов), `writeConfigFile`, плейсхолдеры `{{env:NAME}}`/`{{file:path}}`/`{{fs:path}}`.
-- [ ] `paths.js` — `defaultHome()` = `AI_IMAGE_HOME` или `~/.ai-image`; подкаталоги
+- [x] `paths.js` — `defaultHome()` = `AI_IMAGE_HOME` или `~/.ai-image`; подкаталоги
       `config.json`, `prompts/`, `notes/`, `diagnostics/`.
-- [ ] `validate.js` — `validateConfig()`: enums, бэкенды (URL/ключ/`supports`),
+- [x] `validate.js` — `validateConfig()`: enums, бэкенды (URL/ключ/`supports`),
       `image.*`, `purpose.models`, `fallback.models`, `limits`, `roles`;
       сообщения — по точному пути поля, на русском («некорректный JSON»,
       «неизвестный раздел»).
-- [ ] `index.js` — `loadConfig()`: defaults < `config.json` < `--config` < env < флаги
+- [x] `index.js` — `loadConfig()`: defaults < `config.json` < `--config` < env < флаги
       → плейсхолдеры → primary-backend → валидация; `ensureConfigFile()`, `redactConfig()`.
-- [ ] `config init` создаёт `~/.ai-image/config.json` из `defaultConfigText()` и
+- [x] `config init` создаёт `~/.ai-image/config.json` из `defaultConfigText()` и
       каталоги `prompts/`, `notes/`, `diagnostics/`.
+
+> **Имена переменных.** `AI_IMAGE_MODEL` сохраняет смысл монолита — это модель
+> картинок; текстовая модель берётся из `AI_IMAGE_TEXT_MODEL` (или `AI_MODEL`,
+> `OPENAI_MODEL`). Явное имя `AI_IMAGE_IMAGE_MODEL` важнее, когда заданы обе.
 
 ---
 
