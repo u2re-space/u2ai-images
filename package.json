@@ -1,0 +1,50 @@
+{
+  "name": "@u2ai/images",
+  "version": "0.3.0-alpha",
+  "description": "AI image processor: generation, editing, advanced sizing, cropping, padding, alpha and background work over OpenAI-compatible backends.",
+  "type": "module",
+  "main": "./index.js",
+  "bin": {
+    "ai-image": "./bin/ai-image.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/u2re-space/u2ai-images.git"
+  },
+  "engines": {
+    "node": ">=26.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "start": "node bin/ai-image.js",
+    "test": "node --test --test-timeout=60000 \"test/*.test.js\""
+  },
+  "files": [
+    "bin",
+    "src",
+    "index.js",
+    "README.md"
+  ],
+  "keywords": [
+    "openai",
+    "images",
+    "cli",
+    "image-processing",
+    "background-removal",
+    "alpha-channel",
+    "crop",
+    "image-generation"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "canvas": "^4.0.0-rc3",
+    "sharp": "^0.35.5"
+  },
+  "allowScripts": {
+    "canvas@3.2.3": true,
+    "canvas@4.0.0-rc3": true
+  }
+}
