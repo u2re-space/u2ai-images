@@ -81,5 +81,8 @@ export async function run(ctx) {
         items: result.items,
         diff: result.diff,
         files: written.map((file) => path.relative(cwd, path.resolve(cwd, file)).split(path.sep).join('/')),
+        text: result.diff
+            ? `the sheet is ${result.width}x${result.height}, the difference is ${result.diff.similarity}% similar`
+            : `the sheet is ${result.width}x${result.height}`,
     });
 }

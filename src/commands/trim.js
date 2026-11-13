@@ -59,5 +59,8 @@ export async function run(ctx) {
         before: result.before,
         after: result.after,
         files: [path.relative(cwd, path.resolve(cwd, output)).split(path.sep).join('/')],
+        text: result.changed
+            ? `the edges are off: ${result.before?.width}x${result.before?.height} → ${result.after?.width}x${result.after?.height}`
+            : `nothing to trim (${result.reason})`,
     });
 }

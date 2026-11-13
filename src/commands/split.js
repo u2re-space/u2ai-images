@@ -62,5 +62,6 @@ export async function run(ctx) {
         rows,
         cols,
         files: result.tiles.map((tile) => path.relative(cwd, path.resolve(cwd, tile.abs ?? tile.rel)).split(path.sep).join('/')),
+        text: `${rows * cols} tiles of ${result.source?.width ?? '?'}x${result.source?.height ?? '?'}`,
     });
 }

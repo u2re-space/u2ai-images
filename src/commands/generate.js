@@ -81,6 +81,11 @@ export async function run(ctx) {
     };
     if (options.dryRun) return reportPlan({ options, renderer }, plan);
 
+    // The line of the plan: what is asked of the model, and where the result lands.
+    if (typeof renderer.plan === 'function') {
+        renderer.plan({ model, size, resolution, format, purpose, output: target.target });
+    }
+
     const client = createCommandClient({ config, env, renderer });
     try {
         const answer = await client.images.generate({

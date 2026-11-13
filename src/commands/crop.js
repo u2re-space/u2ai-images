@@ -73,5 +73,8 @@ export async function run(ctx) {
         changed: result.changed,
         reason: result.reason,
         files: [path.relative(cwd, path.resolve(cwd, output)).split(path.sep).join('/')],
+        text: trim
+            ? `the padding is off: ${result.width}x${result.height} (${result.reason})`
+            : `the box is cut out: ${result.width}x${result.height}`,
     });
 }

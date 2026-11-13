@@ -62,7 +62,7 @@ export async function run(ctx) {
             model: result.model,
             colors: result.colors,
             files: [result.rel],
-            text: result.rel,
+            text: `${result.rel}: ${result.colors ?? '?'} colors`,
         });
     } finally {
         client.close();

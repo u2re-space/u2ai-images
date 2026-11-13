@@ -96,4 +96,15 @@ Local options:
 Configuration:
   ~/.ai-image/config.json  The configuration file.
   AI_IMAGE_*              Environment overrides (AI_IMAGE_HOME changes the directory).
+
+Examples:
+  ai-image generate "a red bicycle leaning on a wall" --size 1024x1024
+  ai-image edit photo.png "make the sky stormy" --purpose edit
+  ai-image crop photo.png --x 10 --y 20 --width 640 --height 480 --out cut.png
+  ai-image trim photo.png --transparent-only --out tight.png
+  ai-image fit photo.png --width 1200 --height 800 --mode cover
+  ai-image background logo.png --out logo-cut.png
+  ai-image compare before.png after.png --mode both --labels
+  ai-image info photo.png --json
+  ai-image purpose
 `;

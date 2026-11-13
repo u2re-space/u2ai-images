@@ -124,7 +124,18 @@ export function createCommandClient({ config, env = process.env, renderer = null
         env,
         signal,
         onEvent: renderer
-            ? (event) => renderer.event({ type: 'verbose', kind: 'info', text: describeEvent(event) })
+            ? (event) => {
+                const text = describeEvent(event);
+                if (!text) return;
+                // The progress of the run is live: the request that is made, the parts that
+                // came back. The rest of the events are details of a verbose run.
+                if (typeof renderer.progress === 'function'
+                    && (event.type === 'request.start' || event.type === 'response.payload')) {
+                    renderer.progress(text);
+                    return;
+                }
+                renderer.event({ type: 'verbose', kind: 'info', text });
+            }
             : null,
     });
 }
@@ -180,7 +191,9 @@ export function reportResult({ options, renderer }, result) {
         return 0;
     }
     const files = result.files ?? [];
-    for (const file of files) renderer.line('result', file);
-    if (!files.length && result.text) renderer.line('result', result.text);
+    if (typeof renderer.files === 'function') renderer.files(files);
+    else for (const file of files) renderer.line('result', file);
+    // The line of the report: what the command did, in one line a person can read.
+    if (result.text) renderer.line('info', result.text);
     return 0;
 }

@@ -68,6 +68,9 @@ export async function run(ctx) {
             changed: result.changed,
             reason: result.reason,
             files: [path.relative(cwd, output).split(path.sep).join('/')],
+            text: result.changed
+                ? `the alpha channel is built (${result.reason})`
+                : `the alpha channel was not built: ${result.reason}`,
         });
     } finally {
         client.close();

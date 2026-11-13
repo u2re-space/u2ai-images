@@ -61,10 +61,21 @@ export async function run(ctx) {
     const purpose = suggestPurpose(info, alpha);
     const models = purposeModels(config, purpose);
     const resolved = resolvePurposeModel(config, purpose);
+    const rel = path.relative(cwd, abs).split(path.sep).join('/');
+    const transparency = alpha.opaque === null
+        ? 'unknown'
+        : (alpha.opaque ? 'opaque' : 'transparent');
+    const text = [
+        `${rel}`,
+        `${info.width}x${info.height} ${info.format}`,
+        `${info.bytes} bytes`,
+        `alpha: ${transparency}`,
+        `purpose: ${purpose} → ${resolved ?? config?.imageModel ?? 'no model'}`,
+    ].join(' · ');
 
     return reportResult({ options, renderer }, {
         command: 'info',
-        file: path.relative(cwd, abs).split(path.sep).join('/'),
+        file: rel,
         path: abs,
         format: info.format,
         width: info.width,
@@ -76,5 +87,6 @@ export async function run(ctx) {
             models,
             resolved: resolved ?? config?.imageModel ?? null,
         },
+        text,
     });
 }

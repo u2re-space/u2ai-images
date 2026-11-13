@@ -10,7 +10,7 @@
 import { parseArgs } from 'node:util';
 import { createRequire } from 'node:module';
 import { loadConfig } from './config.js';
-import { checkNodeVersion } from './cli/compatibility.js';
+import { checkNodeVersion, exitCodeFor } from './cli/compatibility.js';
 import { createRenderer, createPlainRenderer, detectMode } from './cli/renderer.js';
 import { COMMANDS, HELP, commandNames } from './help.js';
 
@@ -247,6 +247,6 @@ export async function main(argv = process.argv.slice(2)) {
         } else {
             renderer.line('fail', message);
         }
-        return error?.usage ? 2 : 1;
+        return exitCodeFor(error);
     }
 }

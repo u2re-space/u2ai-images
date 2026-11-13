@@ -596,17 +596,18 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
 
 ## 12. CLI `ai-image` и рендерер
 
-- [ ] `src/cli.js` — разбор команды (`generate|edit|vectorize|decorate|crop|pad|
+- [x] `src/cli.js` — разбор команды (`generate|edit|vectorize|decorate|crop|pad|
       fit|resize|trim|split|alpha|background|compare|info|purpose|process|config`),
       общие флаги, `--dry-run`, `--json`, маршрутизация в `src/commands/*`.
-- [ ] `src/cli/renderer.js` — события и живой вывод: «модель · кадр · формат →
+- [x] `src/cli/renderer.js` — события и живой вывод: «модель · кадр · формат →
       каталог», прогресс по частям, итоговый список файлов; в не-TTY — плоский
       текст без цвета.
-- [ ] `src/cli/colors.js` — цвета с отключением через `NO_COLOR`/`AI_IMAGE_NO_COLOR`.
-- [ ] `src/cli/compatibility.js` — проверка Node >= 26, маппинг ошибок в коды выхода.
-- [ ] `src/help.js` — справка: команды, примеры (генерация, правка, кроп, подгонка,
+- [x] `src/cli/colors.js` — цвета с отключением через `NO_COLOR`/`AI_IMAGE_NO_COLOR`.
+- [x] `src/cli/compatibility.js` — проверка Node >= 26, маппинг ошибок в коды выхода
+      (`exitCodeFor`: 0 — успех, 1 — ошибка, 2 — неверные аргументы, 130 — прерывание).
+- [x] `src/help.js` — справка: команды, примеры (генерация, правка, кроп, подгонка,
       снятие фона, purpose).
-- [ ] Проверка вручную: `ai-image --help`, `ai-image purpose`, `ai-image info file.png`,
+- [x] Проверка вручную: `ai-image --help`, `ai-image purpose`, `ai-image info file.png`,
       `ai-image crop file.png --trim --out out.png`, `ai-image generate "…" --dry-run`.
 
 ---

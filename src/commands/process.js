@@ -58,6 +58,11 @@ export async function run(ctx) {
     };
     if (options.dryRun) return reportPlan({ options, renderer }, plan);
 
+    // The line of the plan: which model serves the run, and where the result lands.
+    if (typeof renderer.plan === 'function') {
+        renderer.plan({ model, size: options.size ?? null, format: options.format ?? null, purpose, output: plan.output });
+    }
+
     const client = createCommandClient({ config, env, renderer });
     try {
         const report = await runPipeline({

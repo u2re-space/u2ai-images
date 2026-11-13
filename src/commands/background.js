@@ -69,6 +69,9 @@ export async function run(ctx) {
             changed: result.changed,
             reason: result.reason,
             files: [path.relative(cwd, output).split(path.sep).join('/')],
+            text: result.changed
+                ? `the background is removed (${result.reason})`
+                : `the background was not removed: ${result.reason}`,
         });
     } finally {
         client.close();

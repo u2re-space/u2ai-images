@@ -67,5 +67,6 @@ export async function run(ctx) {
         width: result.width,
         height: result.height,
         files: [path.relative(cwd, path.resolve(cwd, output)).split(path.sep).join('/')],
+        text: `the picture fits the frame ${result.width}x${result.height} (${fit})`,
     });
 }

@@ -63,5 +63,6 @@ export async function run(ctx) {
         width: result.width,
         height: result.height,
         files: [path.relative(cwd, path.resolve(cwd, output)).split(path.sep).join('/')],
+        text: `the canvas is ${result.width}x${result.height}, the picture is untouched`,
     });
 }
