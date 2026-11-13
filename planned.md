@@ -399,34 +399,38 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
 
 Порядок движков: `sharp` → `node-canvas` → ImageMagick (`image.rasterEngine: auto|sharp|canvas|magick`).
 
-- [ ] `src/image/sharp.js` — адаптер над `sharp`: декод RGBA, кадрирование, изменение
+- [x] `src/image/sharp.js` — адаптер над `sharp`: декод RGBA, кадрирование, изменение
       размера, вставка (композит), альфа-маска, trim, encode PNG/JPEG/WebP.
-- [ ] `src/image/canvas.js` — адаптер над `node-canvas`: то же самое, когда `sharp`
+- [x] `src/image/canvas.js` — адаптер над `node-canvas`: то же самое, когда `sharp`
       недоступен (в частности — подписи на таблице сравнения).
-- [ ] `src/image/raster.js` — порт `src/shared/image-raster.js` (без таблицы из
+- [x] `src/image/svg.js` — рендер SVG через ReSVG (первый выбор), потом sharp.
+- [x] `src/image/raster.js` — порт `src/shared/image-raster.js` (без таблицы из
       монолита она нужна, но без строителя сравнительной карты он не нужен — он
       остаётся в `compare` шага 9):
       `rasterEngine`, `rasterInfo`, `rasterIsOpaque`, `rasterAlphaShare`,
       `rasterAlphaSoftShare`, `decodeRgba`, `encodeRgba`, `rasterApplyAlphaMask`,
       `rasterColorKeyAlpha`, `rasterLocalAlphaMatte`, `rasterDetectFakeTransparency`,
-      `rasterCrop`, `rasterPatch`, `rasterFitToSourceFrame`, `rasterTrim`,
+      `rasterCrop`, `rasterPatch`, `rasterFitToFrame`, `rasterTrim`,
       `rasterSplit`, `rasterPadImageBytes`, `rasterRemoveImagePadding`,
-      `rasterScale`, `rasterizeSvg`.
-- [ ] `src/image/magick.js` — порт `src/shared/image-magick.js`: `detectMagick`,
+      `rasterScale`, `rasterizeSvg`, `getRaster`, `fitBox`.
+- [x] `src/image/magick.js` — порт `src/shared/image-magick.js`: `detectMagick`,
       `magickCrop`, `magickSplit`, `magickResize`, `magickConvert`, `magickIdentify`,
       `magickPadImageBytes`, `magickRemoveImagePadding`, `magickIsOpaque`,
       `magickRemoveFlatBackground`, `magickColorCount`, `magickPaletteStats`,
       `assessVectorSuitability`, `magickApplyAlphaMask`, `magickDetectFakeTransparency`,
-      `magickAlphaShare`, `magickAlphaSoftShare`, `magickContourAlphaMask`,
-      `magickSaturationAlphaMask`, `magickTrimImage`, `ensureTransparentBackground`.
-- [ ] `src/image/sizing.js` (дополнительно) — `downscaleToMaxSide`, `fitToFrame`
-      (contain/cover/fill), `upscaleToMinPixels` — локальные операции подгонки,
-      отдельные от сетевой лестницы кадров шага 4.
-- [ ] `src/image/downscale.js`, `src/image/upscale.js`, `src/image/padding.js`,
-      `src/image/crop.js`, `src/image/trimmer.js` — тонкие обёртки над `raster.js`
-      с единым контрактом `{ input, output, cwd, signal, engine }` и внятным
-      сообщением, если ни один движок недоступен.
-- [ ] Тесты: `test/raster.test.js` — круговое преобразование PNG (sharp → canvas →
+      `magickContourAlphaMask`, `magickSaturationAlphaMask`, `magickTrimImage`,
+      `ensureTransparentBackground`.
+- [x] `src/core/shell.js` — запуск программы: ImageMagick — единственное место,
+      где пакет запускает процесс.
+- [x] Локальная подгонка (отдельно от сетевой лестницы кадров шага 4):
+      `src/image/downscale.js` (`downscaleImage`, кап по длинной стороне, пропорции
+      сохраняются), `src/image/upscale.js` (`upscaleImage`, множитель),
+      `src/image/raster.js` (`rasterFitToFrame` — `contain`/`cover`/`fill`),
+      `src/image/padding.js` (`padImage`, `parsePadColor`), `src/image/crop.js`
+      (`cropImage`), `src/image/trimmer.js` (`trimImage`) — единый контракт
+      `{ input, output, cwd, signal, engine }` и внятное сообщение, если ни один
+      движок недоступен.
+- [x] Тесты: `test/raster.test.js` — круговое преобразование PNG (sharp → canvas →
       magick), кроп, trim, pad + обратное срезание padding, split, scale,
       определение формата/кадра/альфы; каждый движок — отдельный прогон там, где
       он установлен.
