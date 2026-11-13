@@ -503,7 +503,7 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
 
 ## 10. Генерация и редактирование (команды)
 
-- [ ] `src/commands/generate.js` — `ai-image generate`:
+- [x] `src/commands/generate.js` — `ai-image generate`:
       - промпт из аргумента или stdin (`limits.maxStdinBytes`);
       - `--purpose` выбирает модель через `resolvePurposeModel`;
       - `--size`/`--resolution`/`--format`/`--background`/`--count` → конфиг и
@@ -511,21 +511,30 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
       - результат пишется через `sink`, в `--json` — список файлов;
       - при `--background transparent` и непрозрачном ответе запускается
         альфа-пайплайн шага 8 (если модель не умеет прозрачность сама).
-- [ ] `src/commands/edit.js` — `ai-image edit`:
+- [x] `src/commands/edit.js` — `ai-image edit`:
       - исходник читается и проверяется по формату и весу;
       - модель без `padToMin` получает исходник в своём масштабе, а ответ
         приводится к кадру исходника;
       - `--reference` — дополнительные референсы (до 10 для vendor-моделей).
-- [ ] `src/commands/decorate.js` — `ai-image decorate`: слой декоративных элементов
+- [x] `src/commands/decorate.js` — `ai-image decorate`: слой декоративных элементов
       (орнаменты, ленты, разделители, рамки, паттерны, бейджи) — либо готовый
       SVG-файл, либо CSS-правило; выбор техники — по форме (геометрия/градиент/маска/
       движение → CSS, сложный контур или самодостаточная картинка → SVG).
-- [ ] `src/commands/info.js` — `ai-image info`: формат, кадр, альфа, вес, путь
+      Роль `src/roles/decorator.js` — порт роли монолита: описание элемента и
+      опорный кроп на входе, файл и точный сниппет на выходе; CSS-правило
+      пишется в `styles/decor/`, картинка — в `assets/decor/`.
+- [x] `src/commands/info.js` — `ai-image info`: формат, кадр, альфа, вес, путь
       к файлу, разрешённый purpose для этой картинки.
-- [ ] `src/commands/config.js` — `ai-image config init|show|path` (show — с
+- [x] `src/commands/config.js` — `ai-image config init|show|path` (show — с
       редактированием секретов: ключи маскируются).
-- [ ] Все команды: `--json` (машиночитаемый ответ), `--dry-run` (план без
+- [x] Локальные команды: `crop`, `pad`, `fit`, `resize`, `trim`, `split`,
+      `alpha`, `background`, `compare`, `vectorize` — обёртки над
+      `src/image/tools.js`; без `--out` результат пишется рядом с исходником
+      под производным именем, исходник не перезаписывается.
+- [x] Все команды: `--json` (машиночитаемый ответ), `--dry-run` (план без
       сетевых вызовов), коды выхода: 0 — успех, 1 — ошибка, 2 — неверные аргументы.
+- [x] Тесты: `test/commands.test.js` (команды, их отчёты и отказы),
+      `test/cli.test.js` (разбор аргументов, `--dry-run`, `--json`, коды выхода).
 
 ---
 

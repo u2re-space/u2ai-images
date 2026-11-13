@@ -65,22 +65,33 @@ Common options:
 Generation options:
   -m, --model <name>    Model override.
       --image-model <name>  Image model override.
-      --purpose <name>  Purpose: decompose | isolate | upscale | generate.
+      --purpose <name>  Purpose: decompose | generate | edit | remove_background | upscale |
+                        unrotate (aliases: isolate, isolate_object, rectify).
       --size <WxH>      Frame of the picture.
       --resolution <tier>  Resolution tier: 512 | 1K | 1.5K | 2K | 3K | 4K.
       --format <fmt>    Output format: png | jpeg | webp | svg.
       --background <b>  Background: auto | opaque | transparent.
   -n, --count <n>       How many pictures to make.
       --reference <file>  An extra reference for an edit (repeatable).
+      --image <file>    A reference picture for a generation or a decoration.
 
 Local options:
       --engine <name>   Raster engine: auto | sharp | canvas | magick.
       --x <n> --y <n>  Corner of the crop.
       --width <n> --height <n>  Frame of the result.
+      --max-side <n>    The longest side of the result.
+      --factor <n>      How many times bigger the result is.
       --trim            Cut the uniform or transparent edges off.
+      --fuzz <n>        How far a color may differ and still be the same edge (0-255).
+      --transparent-only  Trim only the transparent edges.
       --rows <n> --cols <n>  Grid of the split.
       --mode <name>     Mode of the command (fit, compare, alpha).
       --alpha-mode <name>  Alpha mode: auto | mask | contour | flat | key | off.
+      --layout <name>   Layout of the comparison: row | column | grid.
+      --frame <shape>   Frame of the comparison: 16:9, 2.39:1, 800x600.
+      --gap <n>         The gap between the cells of the comparison.
+      --labels          Write the name of every picture on the sheet.
+      --kind <css|svg>  The technique of a decoration.
 
 Configuration:
   ~/.ai-image/config.json  The configuration file.

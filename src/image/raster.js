@@ -605,7 +605,7 @@ export async function rasterSplit({
             const y = row * tileHeight;
             const width = col === cols - 1 ? info.width - x : tileWidth;
             const height = row === rows - 1 ? info.height - y : tileHeight;
-            const rel = `${outputDir}/${baseName}_r${row + 1}c${col + 1}.png`;
+            const rel = `${String(outputDir).split(path.sep).join('/')}/${baseName}_r${row + 1}c${col + 1}.png`;
             const cut = await rasterCrop({
                 input, output: rel, x, y, width, height, cwd, signal, engine,
             });
