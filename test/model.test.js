@@ -16,7 +16,7 @@ import {
     imageModelFamily,
     imageModelProfile,
 } from '../src/model/profiles.js';
-import { PURPOSE_NAMES, purposeModels, resolvePurposeModel } from '../src/model/purpose.js';
+import { PURPOSE_NAMES, PURPOSE_ALIASES, canonicalPurpose, purposeModels, resolvePurposeModel } from '../src/model/purpose.js';
 import { fallbackChain, fallbackModels, modelFallback } from '../src/model/fallback.js';
 
 test('the profile of a known family is merged over the default', () => {
@@ -51,11 +51,22 @@ test('the family of a model is named', () => {
     assert.equal(imageModelFamily('who/knows'), 'generic');
 });
 
-test('the purpose map has the four purposes of the monolith', () => {
-    assert.deepEqual([...PURPOSE_NAMES], ['decompose', 'isolate', 'upscale', 'generate']);
+test('the purpose map has the purposes of the CLI', () => {
+    assert.deepEqual([...PURPOSE_NAMES], ['decompose', 'generate', 'edit', 'remove_background', 'upscale', 'unrotate']);
     for (const purpose of PURPOSE_NAMES) {
         assert.ok(purposeModels({}, purpose).length > 0, `${purpose} has models`);
     }
+});
+
+test('the aliases name the same purpose', () => {
+    assert.equal(canonicalPurpose('isolate_object'), 'remove_background');
+    assert.equal(canonicalPurpose('isolate'), 'remove_background');
+    assert.equal(canonicalPurpose('rectify'), 'unrotate');
+    assert.equal(canonicalPurpose('unrotate'), 'unrotate');
+    assert.equal(canonicalPurpose('nonsense'), 'nonsense');
+    assert.deepEqual(purposeModels({}, 'isolate_object'), purposeModels({}, 'remove_background'));
+    assert.deepEqual(purposeModels({}, 'rectify'), purposeModels({}, 'unrotate'));
+    assert.deepEqual(Object.keys(PURPOSE_ALIASES).sort(), ['isolate', 'isolate_object', 'rectify']);
 });
 
 test('the seedream model is not in the built-in map', () => {

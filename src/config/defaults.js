@@ -120,9 +120,11 @@ export const defaults = {
     purpose: {
         models: {
             decompose: [...PURPOSE_MODEL_MAP.decompose],
-            isolate: [...PURPOSE_MODEL_MAP.isolate],
-            upscale: [...PURPOSE_MODEL_MAP.upscale],
             generate: [...PURPOSE_MODEL_MAP.generate],
+            edit: [...PURPOSE_MODEL_MAP.edit],
+            remove_background: [...PURPOSE_MODEL_MAP.remove_background],
+            upscale: [...PURPOSE_MODEL_MAP.upscale],
+            unrotate: [...PURPOSE_MODEL_MAP.unrotate],
         },
     },
 

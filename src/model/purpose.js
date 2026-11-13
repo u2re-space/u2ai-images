@@ -2,7 +2,8 @@
  * @file src/model/purpose.js
  * @module model/purpose
  * @purpose The purpose system: what a picture is for, and which model serves it.
- * @exports PURPOSE_NAMES, PURPOSE_MODEL_MAP, purposeModels, resolvePurposeModel
+ * @exports PURPOSE_NAMES, PURPOSE_ALIASES, PURPOSE_MODEL_MAP, purposeModels, resolvePurposeModel,
+ *          canonicalPurpose
  * @ai.tags model, purpose
  * @ai.hint keep
  */
@@ -10,12 +11,40 @@
 /**
  * The purposes the CLI knows.
  *
- * - `decompose` — layouts, templates, screen mockups; needs clean geometry and a consistent style.
- * - `isolate`   — cut a subject out of its background (alpha or matte).
- * - `upscale`   — enlarge a picture while keeping its quality.
- * - `generate`  — plain text-to-image or a restyle; the general-purpose default.
+ * - `decompose`         — layouts, templates, screen mockups; clean geometry and a consistent style.
+ * - `generate`          — plain text-to-image or a restyle; the general-purpose default.
+ * - `edit`              — a picture that is changed; the source keeps its frame and its content.
+ * - `remove_background` — a subject cut out of its background (native alpha or a matte).
+ * - `upscale`           — a picture that is enlarged while it keeps its quality.
+ * - `unrotate`          — a picture that is straightened (the `rectify` of the decomposer).
  */
-export const PURPOSE_NAMES = Object.freeze(['decompose', 'isolate', 'upscale', 'generate']);
+export const PURPOSE_NAMES = Object.freeze([
+    'decompose', 'generate', 'edit', 'remove_background', 'upscale', 'unrotate',
+]);
+
+/**
+ * The spellings that name the same purpose.
+ *
+ * `isolate` and `isolate_object` are the names of the cut-out in the monolith and in the tool
+ * specs, `rectify` is the name of the straightening in the decomposer. They are accepted
+ * everywhere a purpose is named and resolve to the canonical purpose.
+ */
+export const PURPOSE_ALIASES = Object.freeze({
+    isolate: 'remove_background',
+    isolate_object: 'remove_background',
+    rectify: 'unrotate',
+});
+
+/**
+ * The canonical name of a purpose.
+ * @param {string|null|undefined} purpose
+ * @returns {string|null} null when the purpose names nothing
+ */
+export function canonicalPurpose(purpose) {
+    const key = String(purpose ?? '').trim().toLowerCase();
+    if (!key) return null;
+    return PURPOSE_ALIASES[key] ?? key;
+}
 
 /**
  * The built-in order of models per purpose: the first model that the gateway
@@ -30,7 +59,15 @@ export const PURPOSE_MODEL_MAP = Object.freeze({
         'sourceful/riverflow-v2.6-pro',
         'openai/gpt-image-2.6-sunburst',
     ]),
-    isolate: Object.freeze([
+    generate: Object.freeze([
+        'sourceful/riverflow-v2.6-pro',
+        'openai/gpt-image-2.6-sunburst',
+    ]),
+    edit: Object.freeze([
+        'openai/gpt-image-2.6-sunburst',
+        'sourceful/riverflow-v2.6-pro',
+    ]),
+    remove_background: Object.freeze([
         'openai/gpt-image-2.6-sunburst',
         'sourceful/riverflow-v2.6-pro',
     ]),
@@ -38,9 +75,9 @@ export const PURPOSE_MODEL_MAP = Object.freeze({
         'openai/gpt-image-2.6-sunburst',
         'sourceful/riverflow-v2.6-pro',
     ]),
-    generate: Object.freeze([
-        'sourceful/riverflow-v2.6-pro',
+    unrotate: Object.freeze([
         'openai/gpt-image-2.6-sunburst',
+        'sourceful/riverflow-v2.6-pro',
     ]),
 });
 
@@ -97,10 +134,20 @@ function modelAvailable(model, config) {
  * @returns {string[]}
  */
 export function purposeModels(config, purpose) {
-    const key = String(purpose ?? '').trim().toLowerCase();
+    const key = canonicalPurpose(purpose);
     if (!key) return [];
-    const own = config?.purpose?.models?.[key];
-    const list = Array.isArray(own) ? own : (PURPOSE_MODEL_MAP[key] ?? []);
+    const map = config?.purpose?.models ?? {};
+    // Every spelling of the purpose names the same list: a user who writes `isolate_object`
+    // configures the `remove_background` purpose.
+    const keys = [
+        key,
+        ...Object.entries(PURPOSE_ALIASES).filter(([, canonical]) => canonical === key).map(([alias]) => alias),
+    ];
+    for (const name of keys) {
+        const own = map[name];
+        if (Array.isArray(own)) return own.filter((model) => typeof model === 'string' && model.trim());
+    }
+    const list = PURPOSE_MODEL_MAP[key] ?? [];
     return list.filter((model) => typeof model === 'string' && model.trim());
 }
 
@@ -115,8 +162,9 @@ export function purposeModels(config, purpose) {
  * @returns {string|null}
  */
 export function resolvePurposeModel(config, purpose) {
-    const key = String(purpose ?? '').trim().toLowerCase();
+    const key = canonicalPurpose(purpose);
     if (!key) return null;
+    if (!PURPOSE_NAMES.includes(key)) return null;
     if (imageModelIsExplicit(config)) return null;
     for (const model of purposeModels(config, key)) {
         if (modelAvailable(model, config)) return model;

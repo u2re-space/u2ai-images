@@ -9,7 +9,7 @@
  *          presetImageSize, fromMinimalSize, computeSize, normalizeImageSize, makePad16Size,
  *          imageRequestSize, imageSizeFields, sameAspectImageSize, isImageSizeError,
  *          nearestRiverflowRatio, imageSizeAttempts, needsDiv16Padding, needsMinPixelsPadding,
- *          paddedSizeToMinPixels, paddedSizeToMinPixelsByResolution
+ *          paddedSizeToMinPixels, paddedSizeToMinPixelsByResolution, alignmentPlan
  * @ai.tags image, sizing
  * @ai.hint legacy-0.2
  */
@@ -32,7 +32,6 @@ import {
     parseAspectToken,
     rationalAspect,
 } from './aspect.js';
-
 /** Frame presets POST /images/generations and /images/edits accept for the preset-only models. */
 export const IMAGE_SIZES = Object.freeze(['1024x1024', '1024x1536', '1536x1024']);
 
@@ -801,4 +800,56 @@ export function paddedSizeToMinPixelsByResolution(size, model = null, resolution
 
     const { area, ratioDistance, ...result } = best;
     return result;
+}
+
+/**
+ * The plan of one frame: how a request of this frame reaches the model.
+ *
+ * A frame is not always legal for the model: it may be off the 16-pixel grid, below the floor of
+ * the model, or wider than the model accepts. There are two ways out, and the plan names the one
+ * that applies:
+ *
+ *   `direct`   — the model takes the frame as it is; the request goes out unchanged;
+ *   `align`    — the frame is padded into a legal canvas that contains it (the content keeps its
+ *                own scale and position, the empty space is cut off the answer);
+ *   `downscale`— the frame does not fit the model at all; the request asks for the frame as it
+ *                is and the answer is scaled down to it afterwards, with the aspect ratio kept.
+ *
+ * The align path is the one that makes an arbitrary size work: the canvas grows, the content
+ * does not.
+ * @param {{ model?: string|null, size?: string|null, resolution?: string|null }} params
+ * @returns {{ mode: 'direct'|'align'|'downscale', frame: string|null, requested: {width:number,height:number}|null,
+ *   pad: { width: number, height: number }|null }}
+ */
+export function alignmentPlan({ model = null, size = null, resolution = null } = {}) {
+    const token = String(size ?? '').trim();
+    const requested = parseImageSize(token);
+    const profile = imageModelProfile(model);
+    if (!requested) {
+        return { mode: 'direct', frame: token && token !== 'auto' ? token : null, requested: null, pad: null };
+    }
+    const requestedToken = `${requested.width}x${requested.height}`;
+    // A model that takes any frame: the request is legal when the frame fits the profile.
+    if (profile.customSizes && sameAspectImageSize(requestedToken, model) === null) {
+        return { mode: 'direct', frame: requestedToken, requested, pad: null };
+    }
+    // The frame is not legal: pad it into a legal canvas that contains it.
+    const frame = aspectFrame(requested, {
+        step: profile.div16Padding ? 16 : 1,
+        minPixels: profile.minPixels,
+        maxPixels: profile.maxPixels,
+        maxEdge: profile.maxEdge,
+        maxRatio: profile.maxRatio,
+        pixels: requested.width * requested.height,
+    });
+    if (frame && frame.width >= requested.width && frame.height >= requested.height) {
+        return {
+            mode: 'align',
+            frame: `${frame.width}x${frame.height}`,
+            requested,
+            pad: { width: frame.width, height: frame.height },
+        };
+    }
+    // The frame does not fit the model at all: ask for it and scale the answer down afterwards.
+    return { mode: 'downscale', frame: requestedToken, requested, pad: null };
 }

@@ -96,7 +96,9 @@ function validateFallbackModels(map, fail) {
 function validatePurposeModels(map, fail) {
     if (!isRecord(map)) fail('purpose.models должен быть объектом');
     for (const [purpose, list] of Object.entries(map)) {
-        if (!ENUMS.purposes.includes(purpose)) {
+        const key = String(purpose).trim().toLowerCase();
+        const canonical = ENUMS.purposeAliases[key] ?? key;
+        if (!ENUMS.purposes.includes(canonical)) {
             fail(`purpose.models.${purpose}: неизвестный purpose (${ENUMS.purposes.join(' | ')})`);
         }
         if (!Array.isArray(list)) fail(`purpose.models.${purpose} должен быть массивом`);
@@ -154,7 +156,7 @@ export function validateConfig(config) {
     if (c.image.transport !== null && !ENUMS.transports.includes(c.image.transport)) {
         fail(`image.transport: ${ENUMS.transports.join(' | ')}`);
     }
-    if (c.image.purpose !== null && !ENUMS.purposes.includes(c.image.purpose)) {
+    if (c.image.purpose !== null && !ENUMS.purposes.includes(ENUMS.purposeAliases[c.image.purpose] ?? c.image.purpose)) {
         fail(`image.purpose: ${ENUMS.purposes.join(' | ')}`);
     }
     if (!ENUMS.div16Modes.includes(c.image.div16)) fail(`image.div16: ${ENUMS.div16Modes.join(' | ')}`);

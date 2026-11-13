@@ -1,8 +1,8 @@
 # План перехода: Universal-AI (монолит 0.2.xx) → @u2ai/images (0.3.xx)
 
-> Актуальный статус: **план написан, реализация не начата**.
+> Актуальный статус: **реализация идёт, шаги 1–5 сделаны** (коммиты `step-1` … `step-5`).
 > Рабочий дом переносимого кода: `submodules/u2ai-images/`.
-> Репозиторий: <https://github.com/u2re-space/u2ai-images> (remote ещё не настроен).
+> Репозиторий: <https://github.com/u2re-space/u2ai-images> (remote настроен, пуш не делаем).
 >
 > Наследник предыдущего шага: `submodules/u2ai-decomposer/` (`@u2ai/decomposer`, CLI
 > `ai-decompose`) — из него берутся каркас CLI, конфиг-система и openai-слой, чтобы
@@ -41,8 +41,16 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
 | ИИ-парсер payload/result (модель пишет скрипт-извлекатель, `node:vm`-песочница) | `correct_perspective` / `image-distort` / `image-skew` / `image-edge-snapping` — прямоугольная коррекция уже в декомпозиторе |
 | Локальные операции: crop, trim, pad, fit, resize, split, compare, upscale/downscale | Команды монолита, кроме `ai image` (она станет мостом) |
 | Альфа-канал и удаление фона (`mask`, `contour`, `flat`, `key`, native) | Виджеты монолита, `generate_svg`/`download_font`/`download_icons` |
-| Система purpose (`decompose`/`isolate`/`upscale`/`generate` → выбор модели) | Задачи `src/channels/*` (там purpose — другое понятие: support/smm/community) |
+| Система purpose (`decompose`/`generate`/`edit`/`remove_background`/`upscale`/`unrotate` → выбор модели) | Задачи `src/channels/*` (там purpose — другое понятие: support/smm/community) |
 | Роль `decorator` (орнаменты, ленты, разделители, рамки — CSS/SVG) | Модельные профили текстовых моделей — остаются в декомпозиторе/монолите |
+
+**Требования, добавленные к исходному плану:**
+
+| Требование | Как реализуется |
+|---|---|
+| Любой `size` через padding (alignment): содержимое сохраняет пропорции и свой масштаб, padding срезается с ответа | `alignmentPlan`/`planEdit` (`src/image/sizing.js`, `src/openai/client.js`) + локальный слой шага 7 (`padImageBytes` → `removeImagePadding`) |
+| Альтернативный путь решения проблемы с `size` — downscale с сохранением пропорций | режим `downscale` в `alignmentPlan`: кадр запрашивается как есть, ответ уменьшается до него (`fitToFrame`) |
+| `purpose` для ИИ-запросов: `remove_background` (`isolate_object`), `upscale`, `edit`, `generate`, `unrotate` (`rectify`) | `src/model/purpose.js`: канонические purpose + алиасы `isolate`/`isolate_object` → `remove_background`, `rectify` → `unrotate`; маршрутизация модели в `resolveModel` клиента |
 
 **Карта источников монолита:**
 
@@ -140,7 +148,7 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
       div16, padToMin, sizeHint, alphaMode, paintBackground, alphaFeather,
       rasterEngine, maskModel, pngMaxBytes, vectorMaxColors, autoVectorize,
       parser: { enabled, model, archive, archiveDir } }`,
-      `purpose: { models: { decompose: [...], isolate: [...], upscale: [...], generate: [...] } }`,
+      `purpose: { models: { decompose: [...], generate: [...], edit: [...], remove_background: [...], upscale: [...], unrotate: [...] } }`,
       `limits` (maxImageBytes, maxStdinBytes, timeoutMs, retries),
       `roles` (planner/processor/corrector/learner/decorator/vectorizer),
       `defaultConfigText()` — стартовый `config.json`.
@@ -186,7 +194,11 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
       с `src/openai/fallback.js` из декомпозитора: `fallbackChain`, `withModelFallback`,
       `fallbackModels(config, model)`.
 - [x] `src/model/purpose.js` — **система purpose**:
-      - `PURPOSE_NAMES = ['decompose', 'isolate', 'upscale', 'generate']`;
+      - `PURPOSE_NAMES = ['decompose', 'generate', 'edit', 'remove_background', 'upscale',
+        'unrotate']`;
+      - `PURPOSE_ALIASES` — алиасы имён: `isolate`/`isolate_object` → `remove_background`,
+        `rectify` → `unrotate`; алиас — то же самое purpose, любой его вариант
+        письма настраивает один и тот же список моделей;
       - `PURPOSE_MODEL_MAP` — встроенный порядок моделей на purpose (в монолите
         `decompose`/`isolate`/`upscale`/`generate`);
       - `resolvePurposeModel(config, purpose)` — возвращает первую модель, чей
@@ -253,13 +265,13 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
 Каркас openai-слоя берётся из `@u2ai/decomposer` (`src/openai/{http,errors,sse,stream,chat,responses,client,fallback}.js`)
 и дорабатывается под картинки.
 
-- [ ] `src/openai/client.js` — ротация бэкендов:
+- [x] `src/openai/client.js` — ротация бэкендов:
       - пул `imagesBackends` для картинок, `backends` для текста;
       - перебор при 4xx/5xx с backoff (`limits.retries`, `retryDelayMs`);
       - липкие каналы `client.channels('images', model)` — тот же приём, что в
         декомпозиторе: хост, создавший задачу, и опрашивает её сам;
       - `client.backends({ kind, model })` — для диагностики и `--dry-run`.
-- [ ] `src/openai/client.js` — **fallback на generate-эндпоинт**:
+- [x] `src/openai/client.js` — **fallback на generate-эндпоинт**:
       1. основной маршрут — `POST /images/generations` (и `/images/edits` для
          редактирования);
       2. если хост не знает маршрута (404/405, «not found in this api»,
@@ -270,15 +282,15 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
          и картинки он не даёт: это честная ошибка с указанием, что делать;
       4. цепочка `fallback.models.<model>` (плюс `fallback.models.*`) — следующая
          модель пробуется, когда хост её не знает.
-- [ ] `src/openai/client.js` — `images.generate({ model, prompt, size, complexity, n,
-      format, background, references, resolution, signal })`:
+- [x] `src/openai/client.js` — `images.generate({ model, purpose, prompt, size, complexity,
+      n, format, background, references, resolution, signal })`:
       - тело — `generationBody` из шага 4;
       - `imageSizeAttempts` — повтор с другим кадром только на ошибке размера;
       - ответ читается `imagePayloads`/`imageSources`, при неудаче — ИИ-парсер
         из шага 6;
       - результат подгоняется под запрошенный кадр (`fitPayloadsToFrame`), кроме
         векторного ответа (SVG не ресемплится).
-- [ ] `src/openai/client.js` — `images.edit({ model, prompt, files, size, format,
+- [x] `src/openai/client.js` — `images.edit({ model, purpose, prompt, files, size, format,
       background, resolution, signal })`:
       - multipart через `encodeMultipart` (`svg[model]` — bracket-нотация);
       - `padToMin`/`div16` — вход подготавливается локально (шаг 7), padding срезается
@@ -288,19 +300,56 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
         референсами в data-URI;
       - если в запросе нет кадра — он берётся из кадра исходника (чтобы правка
         не превратилась в квадрат по умолчанию).
-- [ ] `src/openai/client.js` — `images.vectorize({ model, prompt, image })`:
+- [x] `src/openai/client.js` — `images.vectorize({ model, prompt, image })`:
       исходник идёт полем `image` в `/images/edits` (модель работает по пикселям),
       формат — `svg`.
-- [ ] `src/openai/client.js` — `responses.create` с `tool_choice: image_generation`
+- [x] `src/openai/client.js` — `responses.create` с `tool_choice: image_generation`
       как запасной путь шага 2; картинки собираются из `image_generation_call`
       (partial и final).
-- [ ] `src/openai/responses.js` — тело с `tools: [{ type: 'image_generation', ... }]`,
+- [x] `src/openai/responses.js` — тело с `tools: [{ type: 'image_generation', ... }]`,
       разбор ответа с картинками (`outputText`, `imagePart`, `partial`).
-- [ ] `src/openai/fallback.js` — `fallbackModels`, `withModelFallback` (порядок:
+- [x] `src/openai/fallback.js` — `fallbackModels`, `withModelFallback` (порядок:
       модель из запроса → `fallback.models.<model>` → `fallback.models.*`).
-- [ ] Тесты: `test/client.test.js` — mock-хосты: успех на `/images/generations`,
+- [x] Тесты: `test/client.test.js` — mock-хосты: успех на `/images/generations`,
       404 на маршруте → уход в Responses, отказ модели → следующая модель, ошибка
       размера → вторая попытка с другим кадром, multipart-тело правки.
+
+### 5.1. Выравнивание кадра: три способа дойти до `size`
+
+Требование «любой `size` должен работать» реализовано планом кадра
+(`alignmentPlan` в `src/image/sizing.js`, `planEdit` в `src/openai/client.js`).
+План выбирает один из трёх путей и говорит, каким он был:
+
+| Режим | Когда | Что уходит в API | Что делается с ответом |
+|---|---|---|---|
+| `direct` | кадр уже законен для модели | кадр как есть | ответ приводится к кадру (`fitToFrame`) |
+| `align` | кадр не проходит по сетке/полу/пропорциям, но помещается в холст модели | кадр, увеличенный до холста модели; исходник лежит в левом верхнем углу в **своём масштабе** | padding срезается (`removeImagePadding`), остаётся исходный кадр |
+| `downscale` | кадр не помещается в модель целиком | кадр как есть | ответ уменьшается до кадра с сохранением пропорций |
+
+Правила выравнивания:
+
+- содержимое **не масштабируется и не переносится**: холст растёт вправо и вниз,
+  пропорции содержимого сохраняются;
+- в промпт правки добавляется требование держать исходник в исходном масштабе
+  в левом верхнем углу холста (`Keep the source artwork at its original scale…`);
+- `align` требует локального слоя (шаг 7): `padImageBytes` и `removeImagePadding`;
+  без него запрос уходит без выравнивания, а CLI честно сообщает, что
+  выравнивание пропущено;
+- `downscale` требует `fitToFrame` из локального слоя.
+
+### 5.2. `purpose` в запросах к ИИ
+
+Клиент принимает `purpose` в `images.generate`/`images.edit` и сам выбирает модель:
+
+1. явно заданная модель запроса;
+2. модель из `resolvePurposeModel(config, purpose)` — первая модель purpose,
+   чей провайдер есть среди настроенных бэкендов;
+3. `config.imageModel` / `config.model`.
+
+Явно заданный `config.imageModel` — это выбор пользователя, поэтому purpose
+его не перекрывает. Канонические purpose: `decompose`, `generate`, `edit`,
+`remove_background`, `upscale`, `unrotate`; алиасы `isolate`/`isolate_object`
+ведут в `remove_background`, `rectify` — в `unrotate`.
 
 ---
 

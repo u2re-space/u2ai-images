@@ -35,7 +35,9 @@ export const ENUMS = Object.freeze({
     /** How the alpha channel of a picture is built. */
     alphaModes: Object.freeze(['auto', 'mask', 'contour', 'flat', 'key', 'off']),
     /** The purposes of the purpose system. */
-    purposes: Object.freeze(['decompose', 'isolate', 'upscale', 'generate']),
+    purposes: Object.freeze(['decompose', 'generate', 'edit', 'remove_background', 'upscale', 'unrotate']),
+    /** The spellings that name the same purpose. */
+    purposeAliases: Object.freeze({ isolate: 'remove_background', isolate_object: 'remove_background', rectify: 'unrotate' }),
     /** The route the picture travels: the images API or the responses API. */
     transports: Object.freeze(['images', 'responses']),
     /** How the edges of a picture are cut off. */
