@@ -439,24 +439,31 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
 
 ## 8. Альфа-канал и удаление фона
 
-- [ ] `src/image/alpha.js` — порт `src/shared/image-alpha.js`:
+- [x] `src/image/alpha.js` — порт `src/shared/image-alpha.js`:
       `hasRealAlpha` (настоящий альфа-канал, а не бахрома в несколько пикселей),
       `localKeyAlpha` (снятие фона по цвету с рамки), `localMatte` (локальный matte),
       `flatAlphaFallback` (заливка от углов), `isFakePlate` (похоже на «шахматку»),
       `judgeAlphaShares`, `clearedShare`, `softShare`, `frameFor`,
-      `maskPassModel`, `askModel`, `applyGeneratedAlphaMask`.
-- [ ] Порядок режимов (`image.alphaMode`):
+      `maskPassModel`, `askModel`, `applyGeneratedAlphaMask`, `isRaster`,
+      `alphaFormatWarning`.
+- [x] Порядок режимов (`image.alphaMode`):
       `auto` → нативная альфа → `mask` (модель рисует маску) → `contour` → `flat`
       (заливка от углов) → `key` (цвет с рамки);
-      `mask`/`contour`/`flat`/`key` — принудительный режим; `off` — без альфы.
-- [ ] `image.paintBackground` — перед построением маски фон заливается цветом
+      `mask`/`contour`/`flat`/`key` — принудительный режим (работает только свой шаг);
+      `off` — без альфы.
+- [x] `image.paintBackground` — перед построением маски фон заливается цветом
       объекта (убивает ореол); `image.alphaFeather` — сглаживание края маски.
-- [ ] `image.maskModel` — модель, которой оплачивается техническая работа по альфе
+- [x] `image.maskModel` — модель, которой оплачивается техническая работа по альфе
       (`null` → семейство по умолчанию, `self` → та же, что нарисовала картинку).
-- [ ] Прозрачность требует формата, который её хранит: JPEG альфу не несёт —
-      команда предупреждает и предлагает PNG.
-- [ ] Тесты: `test/alpha.test.js` — нативная альфа, ключ по цвету, заливка от углов,
-      отказ от «фальшивой» альфы, режимы `auto`/`off`.
+- [x] Прозрачность требует формата, который её хранит: JPEG альфу не несёт —
+      команда предупреждает и предлагает PNG (`alphaFormatWarning`).
+- [x] Локальные маски считаются в `src/image/raster.js`, а не в движке:
+      `rasterLocalAlphaMask({ mode: 'corners'|'contour'|'saturation' })` строит
+      серую matte по пикселям, `rasterBorderKey` читает цвет рамки (медиана, не
+      среднее: один выброс не должен двигать ключ).
+- [x] Тесты: `test/alpha.test.js` — нативная альфа, ключ по цвету, заливка от углов,
+      отказ от «фальшивой» альфы, режимы `auto`/`off`/`key`/`flat`/`contour`,
+      предупреждение о JPEG.
 
 ---
 

@@ -10,7 +10,8 @@
  *          decodeRgba, encodeRgba, rasterScale, rasterFitToFrame, rasterCrop, rasterPatch,
  *          rasterTrim, rasterSplit, rasterPadImageBytes, rasterRemoveImagePadding,
  *          rasterApplyAlphaMask, rasterColorKeyAlpha, rasterLocalAlphaMatte,
- *          rasterDetectFakeTransparency, rasterizeSvg, getRaster, fitBox
+ *          rasterLocalAlphaMask, rasterBorderKey, rasterDetectFakeTransparency, rasterizeSvg,
+ *          getRaster, fitBox
  * @ai.tags image, raster, crop, pad, trim, alpha
  * @ai.hint io
  * @ai.hint legacy-0.2
@@ -703,6 +704,136 @@ function boxBlur(alpha, width, height, radius) {
         }
     }
     return blurred;
+}
+
+/**
+ * The color of the background, read off the border of the frame.
+ *
+ * The border is the part of the picture the object does not touch, so the median of its pixels is
+ * the plate color. The median, not the mean: a picture whose subject reaches the border has a few
+ * stray samples, and one stray sample must not move the key.
+ * @param {{ input: string, cwd?: string, engine?: string, ring?: number }} options
+ * @returns {Promise<{ r: number, g: number, b: number }|null>}
+ * @exports
+ * @ai.hint io
+ */
+export async function rasterBorderKey({ input, cwd = process.cwd(), engine = 'auto', ring = 2 }) {
+    const frame = await decodeRgba(await readFile(toAbs(cwd, input)).catch(() => null), engine).catch(() => null);
+    if (!frame?.width || !frame?.height) return null;
+    const depth = Math.max(1, Math.min(Math.floor(Math.min(frame.width, frame.height) / 4), Math.round(ring) || 1));
+    const reds = [];
+    const greens = [];
+    const blues = [];
+    /**
+     * Take one pixel into the samples.
+     * @param {number} index The offset of the pixel in the RGBA buffer.
+     * @returns {void}
+     * @ai.hint pure
+     */
+    const sample = (index) => {
+        if (frame.data[index + 3] < 128) return;
+        reds.push(frame.data[index]);
+        greens.push(frame.data[index + 1]);
+        blues.push(frame.data[index + 2]);
+    };
+    for (let y = 0; y < frame.height; y++) {
+        for (let x = 0; x < frame.width; x++) {
+            if (x >= depth && x < frame.width - depth && y >= depth && y < frame.height - depth) continue;
+            sample((y * frame.width + x) * 4);
+        }
+    }
+    if (!reds.length) return null;
+    /**
+     * The middle of the sorted samples.
+     * @param {number[]} values
+     * @returns {number}
+     * @ai.hint pure
+     */
+    const median = (values) => {
+        values.sort((a, b) => a - b);
+        return values[Math.floor(values.length / 2)];
+    };
+    return { r: median(reds), g: median(greens), b: median(blues) };
+}
+
+/**
+ * Build a grayscale matte of the object of a picture, without a model.
+ *
+ * Three ways to tell the object from the background:
+ * - `corners` — the background is the color of the corners;
+ * - `contour` — the background is the color of the border, and the object is everything that
+ *   differs from it;
+ * - `saturation` — the background is a neutral plate, and the object is the colored part.
+ *
+ * The matte is white where the object is and black where the background is, with a soft band
+ * between: a one-pixel gray transition is what keeps the edge of the cut clean.
+ * @param {{ input: string, output: string, mode?: 'corners'|'contour'|'saturation', fuzz?: number,
+ *   threshold?: number, cwd?: string, signal?: AbortSignal, engine?: string }} options
+ * @returns {Promise<{ changed: boolean, reason: string, width?: number, height?: number }>}
+ * @exports
+ * @ai.hint io
+ */
+export async function rasterLocalAlphaMask({
+    input, output, mode = 'contour', fuzz = 10, threshold = 15,
+    cwd = process.cwd(), signal = null, engine = 'auto',
+}) {
+    const frame = await decodeRgba(await readFile(toAbs(cwd, input)).catch(() => null), engine).catch(() => null);
+    if (!frame?.width || !frame?.height) return { changed: false, reason: 'unreadable' };
+    signal?.throwIfAborted();
+    const corners = [
+        0,
+        (frame.width - 1) * 4,
+        (frame.height - 1) * frame.width * 4,
+        (frame.height * frame.width - 1) * 4,
+    ];
+    const cornerKey = { r: 0, g: 0, b: 0 };
+    for (const index of corners) {
+        cornerKey.r += frame.data[index] / 4;
+        cornerKey.g += frame.data[index + 1] / 4;
+        cornerKey.b += frame.data[index + 2] / 4;
+    }
+    cornerKey.r = Math.round(cornerKey.r);
+    cornerKey.g = Math.round(cornerKey.g);
+    cornerKey.b = Math.round(cornerKey.b);
+    const borderKey = mode === 'contour'
+        ? await rasterBorderKey({ input, cwd, engine }).catch(() => null)
+        : null;
+    const key = borderKey ?? cornerKey;
+    const tolerance = Math.max(0, Math.round((Number.isFinite(fuzz) ? fuzz : 10) * 2.55));
+    const band = Math.max(4, Math.round((Number.isFinite(threshold) ? threshold : 15) * 2.55));
+    const data = Buffer.alloc(frame.width * frame.height * 4);
+    let subject = 0;
+    for (let i = 0; i < frame.data.length; i += 4) {
+        let value = 0;
+        if (mode === 'saturation') {
+            const max = Math.max(frame.data[i], frame.data[i + 1], frame.data[i + 2]);
+            const min = Math.min(frame.data[i], frame.data[i + 1], frame.data[i + 2]);
+            const saturation = max - min;
+            const low = Math.max(4, Math.round(threshold));
+            value = Math.max(0, Math.min(255, Math.round((saturation - low) / low * 255)));
+        } else {
+            const distance = Math.max(
+                Math.abs(frame.data[i] - key.r),
+                Math.abs(frame.data[i + 1] - key.g),
+                Math.abs(frame.data[i + 2] - key.b),
+            );
+            const low = mode === 'contour' ? Math.round(tolerance / 2) : tolerance;
+            value = Math.max(0, Math.min(255, Math.round((distance - low) / band * 255)));
+        }
+        data[i] = value;
+        data[i + 1] = value;
+        data[i + 2] = value;
+        data[i + 3] = 255;
+        if (value > 128) subject++;
+    }
+    if (subject === 0 || subject === frame.width * frame.height) {
+        return { changed: false, reason: subject === 0 ? 'empty-mask' : 'full-mask' };
+    }
+    const png = await encodeRgba({ width: frame.width, height: frame.height, data }, { format: 'png' }, engine);
+    const outAbs = toAbs(cwd, output);
+    await mkdir(path.dirname(outAbs), { recursive: true });
+    await writeFile(outAbs, png);
+    return { changed: true, reason: mode, width: frame.width, height: frame.height };
 }
 
 /**
