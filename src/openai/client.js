@@ -789,14 +789,14 @@ export async function createClient({ config, env = process.env, signal = null, o
         responses: {
             /**
              * @param {{ model?: string|null, instructions?: string|null, input?: unknown, tools?: object[]|null,
-             *   toolChoice?: unknown, store?: boolean, signal?: AbortSignal|null }} params
+             *   toolChoice?: unknown, store?: boolean, text?: object|null, signal?: AbortSignal|null }} params
              * @returns {Promise<object>}
              */
             async create({ model = null, instructions = null, input = null, tools = null, toolChoice = null,
-                store = false, signal: callSignal = null } = {}) {
+                store = false, text = null, signal: callSignal = null } = {}) {
                 const body = buildResponsesBody({
                     model: model ?? config?.model ?? null,
-                    instructions, input, tools, toolChoice, store,
+                    instructions, input, tools, toolChoice, store, text,
                 });
                 const answer = await call('responses', {
                     method: 'POST', body, kind: 'text', model: body.model,

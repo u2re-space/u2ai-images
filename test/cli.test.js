@@ -7,7 +7,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -20,6 +20,28 @@ import { encodeRgba } from '../src/image/raster.js';
 const run = promisify(execFile);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const binary = path.join(here, '..', 'bin', 'ai-image.js');
+
+/**
+ * Run the CLI with a closed stdin.
+ *
+ * A command that reads the prompt from stdin waits for the end of the pipe, so the pipe is
+ * closed right away: a test must not wait for a keyboard.
+ * @param {string[]} args
+ * @param {{ cwd?: string, input?: string }} [options]
+ * @returns {Promise<{ stdout: string, stderr: string, code: number }>}
+ */
+async function runCli(args, { cwd = process.cwd(), input = '' } = {}) {
+    return await new Promise((resolve, reject) => {
+        const child = spawn(process.execPath, [binary, ...args], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+        child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+        child.on('error', reject);
+        child.on('close', (code) => resolve({ stdout, stderr, code }));
+        child.stdin.end(input);
+    });
+}
 
 /** A temporary directory that cleans itself up. */
 async function tempDir() {
@@ -88,15 +110,19 @@ test('an unknown command ends with the code 2', async () => {
     );
 });
 
-test('a command of a build without it ends with the code 2', async () => {
-    await assert.rejects(
-        run(process.execPath, [binary, 'process', 'a task']),
-        (error) => {
-            assert.equal(error.code, 2);
-            assert.match(error.stderr, /not available in this build yet/);
-            return true;
-        },
-    );
+test('the process command without a task ends with the code 2', async () => {
+    const answer = await runCli(['process']);
+    assert.equal(answer.code, 2);
+    assert.match(answer.stderr, /Give the task/);
+});
+
+test('the dry run of the pipeline ends with the code 0', async () => {
+    const dir = await tempDir();
+    const answer = await runCli(['process', 'a hero picture', '--dry-run', '--json'], { cwd: dir });
+    const payload = JSON.parse(answer.stdout);
+    assert.equal(payload.type, 'plan');
+    assert.equal(payload.command, 'process');
+    assert.equal(payload.task, 'a hero picture');
 });
 
 test('the dry run of the generation writes no file and ends with the code 0', async () => {

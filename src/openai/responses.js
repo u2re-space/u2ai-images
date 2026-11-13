@@ -21,12 +21,12 @@ const isRecord = (value) => value !== null && typeof value === 'object' && !Arra
  * `{ type: 'image_generation' }` — the host must run the picture tool instead of answering
  * with text.
  * @param {{ model?: string|null, instructions?: string|null, input?: unknown, tools?: object[]|null,
- *   toolChoice?: unknown, store?: boolean, stream?: boolean, partialImages?: number|null }} [params]
+ *   toolChoice?: unknown, store?: boolean, stream?: boolean, text?: object|null }} [params]
  * @returns {object}
  */
 export function buildResponsesBody({
     model = null, instructions = null, input = null, tools = null, toolChoice = null,
-    store = false, stream = false,
+    store = false, stream = false, text = null,
 } = {}) {
     const body = { model };
     if (instructions) body.instructions = instructions;
@@ -35,6 +35,8 @@ export function buildResponsesBody({
     if (toolChoice) body.tool_choice = toolChoice;
     if (store) body.store = true;
     if (stream) body.stream = true;
+    // The strict answer of a role: the shape the model has to fill.
+    if (text) body.text = text;
     return body;
 }
 

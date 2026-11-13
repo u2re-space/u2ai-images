@@ -544,11 +544,11 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
 начала реализации») разворачивается в прогон из нескольких ролей, каждая из
 которых делает одну работу.
 
-- [ ] `src/roles/planner.js` — **планировщик стратегии**: по задаче и референсам
+- [x] `src/roles/planner.js` — **планировщик стратегии**: по задаче и референсам
       выбирает purpose, размер, режим фона/альфы, нужны ли кроп и padding, нужен
       ли вектор. Ответ — строгий JSON: `{ purpose, size, resolution, format,
       background, alphaMode, crop, pad, vectorize, rationale }`.
-- [ ] `src/roles/processor.js` — **порядок роли `image-processor`**: готовит
+- [x] `src/roles/processor.js` — **порядок роли `image-processor`**: готовит
       запрошенные картинки, фрагменты и визуальные ассеты; правила из монолита
       сохраняются:
       - не масштабировать и не растягивать исходник; если нужен bigger-холст —
@@ -558,20 +558,20 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
       - готовый SVG писать в `assets/decor/`, правила CSS — в `styles/decor/`;
       - честно сообщать, что операция недоступна, а не «файл существует».
       Ответ — JSON: `{ summary, assets[{path, format, use}], typography[], notes[] }`.
-- [ ] `src/roles/corrector.js` — **корректор**: проверяет результат (кадр против
+- [x] `src/roles/corrector.js` — **корректор**: проверяет результат (кадр против
       запрошенного, альфа против намерения, артефакты) и предлагает/делает
       повторную попытку: другой кадр, другой режим альфы, другая модель.
-- [ ] `src/roles/learner.js` — **накопитель опыта**: читает прошлые прогоны
+- [x] `src/roles/learner.js` — **накопитель опыта**: читает прошлые прогоны
       (`~/.ai-image/notes/*.json`), суммирует, какой purpose/размер/режим альфы
       давал результат, и предлагает стратегию следующего прогона. Файл прогона:
       `{ date, task, purpose, size, model, alphaMode, outcome, notes }`.
-- [ ] `src/roles/vectorizer.js` — **векторизатор**: готовит растр к векторизации
+- [x] `src/roles/vectorizer.js` — **векторизатор**: готовит растр к векторизации
       (снимает шум, оценивает палитру), просит векторную модель, проверяет, что
       документ открывается, и пишет `.svg`.
-- [ ] `src/roles/decorator.js` — **декоратор**: порт `src/roles/decorator.js`
+- [x] `src/roles/decorator.js` — **декоратор**: порт `src/roles/decorator.js`
       монолита (CSS или SVG на элемент), но в самостоятельной роли: на вход —
       описание элемента и опорный кроп, на выход — файл и точный сниппет.
-- [ ] Стадии (`src/stages/`):
+- [x] Стадии (`src/stages/`):
       - `crop.js` — приведение исходника к рабочему виду (кроп/trim по решению
         планировщика);
       - `padding.js` — подготовка холста под модель (div16, `padToMin`) и обратное
@@ -580,15 +580,15 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
       - `correction.js` — коррекция результата (кадр, альфа, повтор);
       - `alignment.js` — приведение ответа к кадру исходника или запрошенному
         кадру (`fitPayloadsToFrame`).
-- [ ] `src/agent/pipeline.js` — оркестратор стадий: состояние, порядок, передача
+- [x] `src/agent/pipeline.js` — оркестратор стадий: состояние, порядок, передача
       артефактов, сборка отчёта (`~/.ai-image/notes/<дата>.json` + `--json`).
-- [ ] `src/agent/tools.js` — инструменты агента: `generate_image`, `edit_image`,
+- [x] `src/agent/tools.js` — инструменты агента: `generate_image`, `edit_image`,
       `crop_image`, `pad_image`, `fit_image`, `alpha_image`, `vectorize_image`,
       `compare_images`, `view_image` (описание через vision-модель — как
       `describeImage` в монолите).
-- [ ] `src/agent/schemas.js` — схемы строгих ответов ролей (то же, что
+- [x] `src/agent/schemas.js` — схемы строгих ответов ролей (то же, что
       `text.format` в монолите).
-- [ ] Тесты: `test/roles.test.js` — планер строит корректную стратегию,
+- [x] Тесты: `test/roles.test.js` — планер строит корректную стратегию,
       корректор находит несовпадение кадра, learner читает прошлые записи,
       декоратор пишет и SVG, и CSS.
 
