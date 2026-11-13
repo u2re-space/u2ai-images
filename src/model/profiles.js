@@ -24,6 +24,14 @@ export const DEFAULT_IMAGE_MODEL = 'openai/gpt-image-2.6-sunburst';
 export const RIVERFLOW_MODEL = 'sourceful/riverflow-v2.6-pro';
 
 /**
+ * The model the gateway runs behind `output_format: svg` for the gpt-image family. The raster
+ * model paints the picture and this one writes the document, so the svg call carries both: without
+ * the `svg.model` field the host refuses the request outright
+ * (`output_format "svg" requires svg.model`).
+ */
+export const SVG_CONVERSION_MODEL = 'gpt-6.1-terra';
+
+/**
  * What a model that the registry does not list is known to accept.
  *
  *   `customSizes`             — an arbitrary WIDTHxHEIGHT goes into `size` instead of a preset;

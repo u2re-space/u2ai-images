@@ -209,17 +209,17 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
 Порядок: сначала чистые функции (шаг 4), потом клиент (шаг 5) и локальный слой (шаг 7),
 которые их используют.
 
-- [ ] `src/image/aspect.js` — порт `src/shared/aspect-ratio.js`: `parseAspectToken`,
+- [x] `src/image/aspect.js` — порт `src/shared/aspect-ratio.js`: `parseAspectToken`,
       `aspectOf`, `aspectFrame`, `ceilAspect`, `nearestAspect`, `rationalAspect`,
       константы `STANDARD_RATIOS`, `RATIO_MAX_TERM`, `RATIO_CEIL_EPSILON`, `RATIO_WORDS`.
-- [ ] `src/openai/images.js` — порт `src/shared/images.js` (форматы и payload):
+- [x] `src/openai/images.js` — порт `src/shared/images.js` (форматы и payload):
       `normalizeImageFormat`, `imageFormatField`, `resolveImageFormat`,
       `supportsTransparentBackground`, `backgroundValue`, `acceptsResponseFormat`,
       `isVectorModel`, `isSvgRequest`, `normalizeVectorRatio`, `svgConversionModel`,
       `encodeMultipart` (с bracket-нотацией вложенных объектов), `imagePayloads`,
       `imageSources`, `pngHasAlphaChannel`, `readImageSize`, `sniffImage`,
       `withSizeHint`, `generationBody`.
-- [ ] `src/image/sizing.js` — **лестница кадров**:
+- [x] `src/image/sizing.js` — **лестница кадров**:
       `parseImageSize`, `getOrientation`, `getAspectDifference`,
       `supportedAspectRatios`, `aspectRatioToken`, `aspectImageSize`,
       `inferResolution`, `tierFromToken`, `presetImageSize`, `fromMinimalSize`,
@@ -228,7 +228,7 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
       `nearestRiverflowRatio`, `imageSizeAttempts`, `needsDiv16Padding`,
       `needsMinPixelsPadding`, `paddedSizeToMinPixels`,
       `paddedSizeToMinPixelsByResolution`.
-- [ ] Семантика, которую нельзя потерять при порте:
+- [x] Семантика, которую нельзя потерять при порте:
       - тир (`512`/`1K`/`1.5K`/`2K`/`3K`/`4K`) задаёт бюджет пикселей, а `size` —
         только ориентацию и пропорцию;
       - `size` у tier-based шлюза уходит в поле `resolution`, `W×H` — в `size`,
@@ -242,7 +242,7 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
         повтор делается только на `isImageSizeError`;
       - `withSizeHint` дублирует требование кадра в текст только для семей,
         которые гарантированно выбрасывают поля размера (`sizeHint: auto|always|never`).
-- [ ] Тесты: `test/sizing.test.js` — тиры, пропорции, 16-пиксельная сетка,
+- [x] Тесты: `test/sizing.test.js` — тиры, пропорции, 16-пиксельная сетка,
       лимиты профиля, порядок попыток, разбор формы ответа (по одному тесту на
       каждое правило выше).
 
