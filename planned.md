@@ -469,32 +469,34 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
 
 ## 9. Локальные операции: crop, pad, fit, resize, trim, split, compare
 
-- [ ] `src/image/tools.js` — порт `src/shared/image-tools.js` (обработчики
+- [x] `src/image/tools.js` — порт `src/shared/image-tools.js` (обработчики
       `generate_image`, `edit_image`, `vectorize_image`) **и** локальных инструментов
       монолита (`crop_image`, `split_image`, `compare_images` из `src/agent/tools.js`):
       единый контракт `{ input, output, cwd, signal, engine }`, запись только внутрь
       рабочего каталога (`resolveInside`), лимит `limits.maxImageBytes`.
-- [ ] `crop`:
+- [x] `crop`:
       - коробка `x/y/width/height` — снимок кадра, координаты берутся из исходника;
       - `--trim` — снятие однородного или прозрачного padding по всем краям;
       - результат сообщает исходный и итоговый кадр и движок.
-- [ ] `pad` — расширение холста до кадра с прозрачностью (или заданным цветом);
+- [x] `pad` — расширение холста до кадра с прозрачностью (или заданным цветом);
       исходник остаётся в левом верхнем углу, масштаб не меняется.
-- [ ] `fit` — подгонка под размер: `contain` (вписывает целиком), `cover` (заполняет
+- [x] `fit` — подгонка под размер: `contain` (вписывает целиком), `cover` (заполняет
       с обрезкой), `fill` (растягивает).
-- [ ] `resize` — изменение размера: по кадру или с сохранением пропорций.
-- [ ] `trim` — снятие краёв; `split` — нарезка на `rows × cols` с координатами
+- [x] `resize` — изменение размера: по кадру или с сохранением пропорций.
+- [x] `trim` — снятие краёв; `split` — нарезка на `rows × cols` с координатами
       каждой плитки.
-- [ ] `compare` — таблица сравнения (`row`/`column`/`grid`), карта разницы
+- [x] `compare` — таблица сравнения (`row`/`column`/`grid`), карта разницы
       (средняя разница и сходство), подписи через `node-canvas`.
-- [ ] `src/image/vectorize.js` — растр → SVG: оценка пригодности
+- [x] `src/image/vectorize.js` — растр → SVG: оценка пригодности
       (`assessVectorSuitability`, потолок `image.vectorMaxColors`), вызов векторной
       модели через `images.vectorize`, запись `.svg`; при недоступности модели —
       понятная ошибка, а не молчаливый PNG.
-- [ ] `src/core/sink.js` — порт `src/core/images.js`: `createImageSink` — запись
+- [x] `src/core/sink.js` — порт `src/core/images.js`: `createImageSink` — запись
       картинок (частичные и финальные) по одному файлу на результат, суффикс при
       нескольких, очередь записей (поздняя частичная картинка не затирает финальную).
-- [ ] Тесты: `test/tools.test.js` — кроп, trim, pad, fit (три режима), resize,
+- [x] `src/core/paths.js` — `resolveInside`: запись только внутрь рабочего каталога,
+      проверка и до, и после `realpath` (симлинк не выносит запись наружу).
+- [x] Тесты: `test/tools.test.js` — кроп, trim, pad, fit (три режима), resize,
       split, compare, запись через sink.
 
 ---

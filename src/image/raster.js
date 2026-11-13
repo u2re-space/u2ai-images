@@ -11,7 +11,7 @@
  *          rasterTrim, rasterSplit, rasterPadImageBytes, rasterRemoveImagePadding,
  *          rasterApplyAlphaMask, rasterColorKeyAlpha, rasterLocalAlphaMatte,
  *          rasterLocalAlphaMask, rasterBorderKey, rasterDetectFakeTransparency, rasterizeSvg,
- *          getRaster, fitBox
+ *          rasterCompare, frameFor, parseColor, getRaster, fitBox
  * @ai.tags image, raster, crop, pad, trim, alpha
  * @ai.hint io
  * @ai.hint legacy-0.2
@@ -27,6 +27,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import {
     canvasDecode,
     canvasEncode,
+    canvasLib,
     canvasMetadata,
     canvasScale,
 } from './canvas.js';
@@ -36,8 +37,51 @@ import {
     sharpMetadata,
     sharpScale,
 } from './sharp.js';
+import { aspectOf } from './aspect.js';
 import { isSvgBytes, svgToPng } from './svg.js';
 import { detectMagick } from './magick.js';
+
+/** The longest side of a comparison cell when the caller names none. */
+export const DEFAULT_MAX_SIDE = 768;
+
+/** The formats a picture may be read from. */
+export const READABLE_EXT = /\.(png|jpe?g|webp|gif|tiff?|bmp|avif|svg)$/i;
+
+/**
+ * The color of a padding or of a background: `transparent`, a named color, or `#rgb`/`#rrggbb`.
+ * @param {string} value
+ * @returns {{ r: number, g: number, b: number, alpha: number }}
+ * @exports
+ * @ai.hint pure
+ */
+export function parseColor(value) {
+    const text = String(value ?? '').trim().toLowerCase();
+    if (!text || text === 'transparent' || text === 'none') return { r: 0, g: 0, b: 0, alpha: 0 };
+    const named = {
+        white: '#ffffff', black: '#000000', gray: '#808080', grey: '#808080',
+        red: '#ff0000', green: '#008000', blue: '#0000ff', yellow: '#ffff00',
+    };
+    const hex = named[text] ?? text;
+    const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/.exec(hex);
+    if (short) {
+        return {
+            r: parseInt(short[1] + short[1], 16),
+            g: parseInt(short[2] + short[2], 16),
+            b: parseInt(short[3] + short[3], 16),
+            alpha: 1,
+        };
+    }
+    const long = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/.exec(hex);
+    if (long) {
+        return {
+            r: parseInt(long[1], 16),
+            g: parseInt(long[2], 16),
+            b: parseInt(long[3], 16),
+            alpha: 1,
+        };
+    }
+    return { r: 0, g: 0, b: 0, alpha: 0 };
+}
 
 /**
  * Resolve a path that may be relative to the working directory.
@@ -571,6 +615,304 @@ export async function rasterSplit({
         }
     }
     return tiles;
+}
+
+/**
+ * The common frame every candidate is fitted into.
+ *
+ * The name may be a literal `WIDTHxHEIGHT` or any shape a caller can name — `16:9`, `2.39:1`,
+ * `cinemascope`, `square` — whose ratio the sheet is cut to. Without a name the largest source
+ * decides, and the cap keeps it inside the sheet.
+ * @param {{ frame?: string, sources?: Array<{ width: number, height: number }>, maxSide?: number }} options
+ * @returns {{ width: number, height: number }}
+ * @exports
+ * @ai.hint pure
+ */
+export function frameFor({ frame = '', sources = [], maxSide = DEFAULT_MAX_SIDE } = {}) {
+    const cap = Math.max(64, Math.min(2048, Math.round(maxSide) || DEFAULT_MAX_SIDE));
+    /**
+     * A shape fills the cap along its long side.
+     * @param {number} ratio
+     * @returns {{ width: number, height: number }}
+     * @ai.hint pure
+     */
+    const fitRatio = (ratio) => (ratio >= 1
+        ? { width: cap, height: Math.max(1, Math.round(cap / ratio)) }
+        : { width: Math.max(1, Math.round(cap * ratio)), height: cap });
+    const text = String(frame ?? '').trim();
+    const literal = /^(\d+)\s*[x×]\s*(\d+)$/i.exec(text);
+    if (literal) {
+        return {
+            width: Math.max(1, Math.min(cap * 4, Number(literal[1]))),
+            height: Math.max(1, Math.min(cap * 4, Number(literal[2]))),
+        };
+    }
+    const shape = aspectOf(text);
+    if (Number.isFinite(shape)) return fitRatio(shape);
+    const largest = sources.reduce(
+        (best, item) => (item.width * item.height > best.width * best.height ? item : best),
+        { width: 1, height: 1 },
+    );
+    const long = Math.max(largest.width, largest.height);
+    if (long <= cap) return { width: largest.width, height: largest.height };
+    return {
+        width: Math.max(1, Math.round(largest.width * cap / long)),
+        height: Math.max(1, Math.round(largest.height * cap / long)),
+    };
+}
+
+/**
+ * The number of columns a layout puts `count` cells into.
+ * @param {'row'|'column'|'grid'} layout
+ * @param {number} count
+ * @returns {number}
+ * @ai.hint pure
+ */
+function columnsFor(layout, count) {
+    if (layout === 'column') return 1;
+    if (layout === 'grid') return Math.min(count, Math.ceil(Math.sqrt(count)));
+    return count;
+}
+
+/**
+ * The width, the height and the origin of every cell of a comparison sheet.
+ * @param {{ count: number, cell: { width: number, height: number }, layout: string, gap: number }} options
+ * @returns {{ width: number, height: number, boxes: Array<{ x: number, y: number }> }}
+ * @ai.hint pure
+ */
+function sheetLayout({ count, cell, layout, gap }) {
+    const cols = columnsFor(layout, count);
+    const rows = Math.ceil(count / cols);
+    const width = cols * cell.width + (cols - 1) * gap;
+    const height = rows * cell.height + (rows - 1) * gap;
+    const boxes = [];
+    for (let index = 0; index < count; index++) {
+        const col = index % cols;
+        const row = Math.floor(index / cols);
+        boxes.push({ x: col * (cell.width + gap), y: row * (cell.height + gap) });
+    }
+    return { width, height, boxes };
+}
+
+/**
+ * The absolute per-channel difference of two frames of the same size.
+ * @param {{ data: Buffer }} a
+ * @param {{ data: Buffer }} b
+ * @returns {{ heat: { width: number, height: number, data: Buffer }, mean: number }}
+ * @ai.hint pure
+ */
+function differenceFrame(a, b) {
+    const heat = { width: a.width, height: b.height, data: Buffer.alloc(a.width * a.height * 4) };
+    let sum = 0;
+    for (let i = 0; i < a.data.length; i += 4) {
+        let peak = 0;
+        for (let channel = 0; channel < 4; channel++) {
+            const delta = Math.abs(a.data[i + channel] - b.data[i + channel]);
+            sum += delta;
+            if (delta > peak) peak = delta;
+        }
+        heat.data[i] = peak;
+        heat.data[i + 1] = peak;
+        heat.data[i + 2] = peak;
+        heat.data[i + 3] = 255;
+    }
+    return { heat, mean: sum / Math.max(1, a.data.length) };
+}
+
+/**
+ * Stamp the source name of every cell in the corner of the sheet.
+ * @param {{ width: number, height: number, data: Buffer }} sheet
+ * @param {Array<{ x: number, y: number, label: string }>} labels
+ * @returns {Promise<boolean>} `false` when no text engine is available.
+ * @ai.hint io
+ */
+async function drawLabels(sheet, labels) {
+    const canvas = await canvasLib();
+    if (!canvas) return false;
+    const surface = canvas.createCanvas(sheet.width, sheet.height);
+    const ctx = surface.getContext('2d');
+    const image = ctx.createImageData(sheet.width, sheet.height);
+    image.data.set(sheet.data);
+    ctx.putImageData(image, 0, 0);
+    const size = Math.max(11, Math.min(22, Math.round(sheet.height / 24)));
+    ctx.font = `${size}px sans-serif`;
+    ctx.textBaseline = 'top';
+    for (const item of labels) {
+        const box = ctx.measureText(item.label);
+        ctx.fillStyle = 'rgba(0,0,0,0.62)';
+        ctx.fillRect(item.x + 4, item.y + 4, box.width + 12, size + 10);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(item.label, item.x + 10, item.y + 9);
+    }
+    const frame = ctx.getImageData(0, 0, sheet.width, sheet.height);
+    sheet.data.set(Buffer.from(frame.data.buffer, frame.data.byteOffset, frame.data.length));
+    return true;
+}
+
+/**
+ * The number of the colors of a picture.
+ *
+ * The colors are counted on a quantized grid (five bits per channel by default): an exact count of
+ * a photograph is in the millions, and the question the caller asks is "is this a drawing with a
+ * few flat colors or a photograph", not "how many shades are there".
+ * @param {{ input: string, cwd?: string, engine?: string, bits?: number }} options
+ * @returns {Promise<number|null>}
+ * @exports
+ * @ai.hint io
+ */
+export async function rasterColorCount({ input, cwd = process.cwd(), engine = 'auto', bits = 5 }) {
+    const frame = await decodeRgba(await readFile(toAbs(cwd, input)).catch(() => null), engine).catch(() => null);
+    if (!frame?.width || !frame?.height) return null;
+    const shift = Math.max(0, Math.min(7, 8 - Math.max(1, Math.round(bits))));
+    const seen = new Set();
+    const step = frame.width * frame.height > 250_000 ? 4 : 1;
+    for (let y = 0; y < frame.height; y += step) {
+        for (let x = 0; x < frame.width; x += step) {
+            const index = (y * frame.width + x) * 4;
+            if (frame.data[index + 3] < 16) continue;
+            const key = ((frame.data[index] >> shift) << 10)
+                | ((frame.data[index + 1] >> shift) << 5)
+                | (frame.data[index + 2] >> shift);
+            seen.add(key);
+        }
+    }
+    return seen.size;
+}
+
+/**
+ * Build a comparison sheet from existing pictures, locally.
+ *
+ * Every candidate is fitted proportionally into one common frame — centered on transparent or
+ * neutral padding — and never stretched. With two candidates the absolute per-pixel difference is
+ * written next to the sheet together with a mean error, which answers "how close are these two"
+ * without a model request.
+ * @param {{ files: Array<{ abs: string, rel: string }>, output: string, cwd?: string,
+ *   layout?: 'row'|'column'|'grid', frame?: string, gap?: number, background?: string,
+ *   maxSide?: number, labels?: boolean, mode?: 'sheet'|'difference'|'both', signal?: AbortSignal,
+ *   engine?: string }} options
+ * @returns {Promise<{ rel: string|null, width: number, height: number, cell: {width:number,height:number},
+ *   items: Array<object>, diff: object|null, engine: string, labelsDrawn: boolean }>}
+ * @exports
+ * @ai.hint io
+ */
+export async function rasterCompare(options) {
+    const {
+        files, output, cwd = process.cwd(), layout = 'row', frame = '', background = 'transparent',
+        maxSide = DEFAULT_MAX_SIDE, labels = false, signal, engine: preferred = 'auto',
+    } = options;
+    const mode = options.mode === 'difference' || options.mode === 'both' ? options.mode : 'sheet';
+    const engine = await rasterEngine(preferred);
+    if (!engine) throw new Error('No local raster engine is available: install sharp or canvas.');
+    if (!Array.isArray(files) || files.length < 2 || files.length > 12) {
+        throw new Error('A comparison needs from 2 to 12 pictures.');
+    }
+    if (mode !== 'sheet' && files.length !== 2) {
+        throw new Error('The difference mode takes exactly two pictures.');
+    }
+    const gap = Math.max(0, Math.min(64, Math.round(options.gap ?? 8)));
+    const decoded = [];
+    for (const file of files) {
+        const bytes = await readFile(file.abs);
+        const image = await decodeRgba(bytes, preferred, Math.max(4096, maxSide));
+        if (!image.width || !image.height) throw new Error(`${file.rel}: the frame cannot be read.`);
+        decoded.push({ ...file, frame: image });
+        signal?.throwIfAborted();
+    }
+    const cell = frameFor({
+        frame,
+        sources: decoded.map((item) => ({ width: item.frame.width, height: item.frame.height })),
+        maxSide,
+    });
+    const sheetBox = sheetLayout({ count: decoded.length, cell, layout, gap });
+    const pad = parseColor(background);
+    const sheet = {
+        width: sheetBox.width,
+        height: sheetBox.height,
+        data: Buffer.alloc(sheetBox.width * sheetBox.height * 4),
+    };
+    if (pad.alpha > 0) {
+        for (let p = 0; p < sheet.data.length; p += 4) {
+            sheet.data[p] = pad.r;
+            sheet.data[p + 1] = pad.g;
+            sheet.data[p + 2] = pad.b;
+            sheet.data[p + 3] = 255;
+        }
+    }
+    const items = [];
+    const comparisonFrames = [];
+    for (const [index, entry] of decoded.entries()) {
+        const fit = fitBox(entry.frame.width, entry.frame.height, cell.width, cell.height);
+        const scaled = await rasterScale(entry.frame, fit.width, fit.height, engine);
+        const origin = sheetBox.boxes[index];
+        blit(sheet, scaled, origin.x + fit.x, origin.y + fit.y);
+        const normalized = {
+            width: cell.width,
+            height: cell.height,
+            data: Buffer.alloc(cell.width * cell.height * 4),
+        };
+        if (pad.alpha > 0) {
+            for (let p = 0; p < normalized.data.length; p += 4) {
+                normalized.data[p] = pad.r;
+                normalized.data[p + 1] = pad.g;
+                normalized.data[p + 2] = pad.b;
+                normalized.data[p + 3] = 255;
+            }
+        }
+        blit(normalized, scaled, fit.x, fit.y);
+        comparisonFrames.push(normalized);
+        items.push({
+            rel: entry.rel,
+            index: index + 1,
+            x: origin.x + fit.x,
+            y: origin.y + fit.y,
+            width: fit.width,
+            height: fit.height,
+            cell: { x: origin.x, y: origin.y, width: cell.width, height: cell.height },
+            sourceWidth: entry.frame.width,
+            sourceHeight: entry.frame.height,
+            scale: Number(fit.scale.toFixed(4)),
+        });
+    }
+    let labelsDrawn = false;
+    if (mode !== 'difference' && labels) {
+        labelsDrawn = await drawLabels(sheet, items.map((item) => ({
+            x: item.cell.x, y: item.cell.y, label: path.basename(item.rel),
+        })));
+    }
+    let sheetRel = null;
+    if (mode !== 'difference') {
+        const sheetAbs = toAbs(cwd, output);
+        await mkdir(path.dirname(sheetAbs), { recursive: true });
+        await writeFile(sheetAbs, await encodeRgba(sheet, { format: 'png' }, engine));
+        sheetRel = String(output).split(path.sep).join('/');
+    }
+    let diffResult = null;
+    if (mode !== 'sheet') {
+        const { heat, mean } = differenceFrame(comparisonFrames[0], comparisonFrames[1]);
+        const diffRel = mode === 'difference'
+            ? output
+            : `${String(output).replace(/\.\w+$/, '')}-diff.png`;
+        const diffAbs = toAbs(cwd, diffRel);
+        await mkdir(path.dirname(diffAbs), { recursive: true });
+        await writeFile(diffAbs, await encodeRgba(heat, { format: 'png' }, engine));
+        diffResult = {
+            rel: String(diffRel).split(path.sep).join('/'),
+            width: cell.width,
+            height: cell.height,
+            meanError: Number(mean.toFixed(2)),
+            similarity: Number((100 * (1 - mean / 255)).toFixed(1)),
+        };
+    }
+    return {
+        rel: sheetRel,
+        width: sheetBox.width,
+        height: sheetBox.height,
+        cell,
+        items,
+        diff: diffResult,
+        engine,
+        labelsDrawn,
+    };
 }
 
 /**

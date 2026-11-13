@@ -11,7 +11,7 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { decodeRgba, encodeRgba, rasterInfo } from './raster.js';
+import { decodeRgba, encodeRgba, parseColor, rasterInfo } from './raster.js';
 
 /**
  * Parse a padding color: `transparent`, a named color, or `#rgb`/`#rrggbb`.
@@ -20,31 +20,7 @@ import { decodeRgba, encodeRgba, rasterInfo } from './raster.js';
  * @exports
  * @ai.hint pure
  */
-export function parsePadColor(value) {
-    const text = String(value ?? '').trim().toLowerCase();
-    if (!text || text === 'transparent' || text === 'none') return { r: 0, g: 0, b: 0, alpha: 0 };
-    const named = { white: '#ffffff', black: '#000000', gray: '#808080', grey: '#808080' };
-    const hex = named[text] ?? text;
-    const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/.exec(hex);
-    if (short) {
-        return {
-            r: parseInt(short[1] + short[1], 16),
-            g: parseInt(short[2] + short[2], 16),
-            b: parseInt(short[3] + short[3], 16),
-            alpha: 1,
-        };
-    }
-    const long = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/.exec(hex);
-    if (long) {
-        return {
-            r: parseInt(long[1], 16),
-            g: parseInt(long[2], 16),
-            b: parseInt(long[3], 16),
-            alpha: 1,
-        };
-    }
-    return { r: 0, g: 0, b: 0, alpha: 0 };
-}
+export const parsePadColor = parseColor;
 
 /**
  * Grow the canvas of a picture to a frame.
