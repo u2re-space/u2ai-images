@@ -19,7 +19,9 @@
   },
   "scripts": {
     "start": "node bin/ai-image.js",
-    "test": "node --test --test-timeout=60000 \"test/*.test.js\""
+    "test": "node --test --test-timeout=60000 \"test/*.test.js\"",
+    "test:network": "node --test --test-timeout=120000 \"test/network.test.js\"",
+    "check": "node scripts/check-syntax.mjs"
   },
   "files": [
     "bin",

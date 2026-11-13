@@ -614,23 +614,28 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
 
 ## 13. Тесты / проверка
 
-- [ ] `npm test` = `node --test --test-timeout=60000 "test/*.test.js"` — без сети:
+- [x] `npm test` = `node --test --test-timeout=60000 "test/*.test.js"` — без сети:
       mock-хосты через локальный `http.createServer` или подставной клиент.
-- [ ] Состав тестов:
+- [x] Состав тестов:
       | Файл | Что закрывает |
       |---|---|
       | `test/config.test.js` | загрузка конфига, env-оверрайды, плейсхолдеры, отказ на неизвестном разделе, `~/.ai-image/*` |
       | `test/sizing.test.js` | лестница кадров, тиры, пропорции, лимиты, попытки |
+      | `test/model.test.js` | профили моделей, семейства, цепочка фолбэков |
       | `test/purpose.test.js` | карта purpose, разрешение модели по бэкендам, приоритет `imageModel` |
       | `test/client.test.js` | `/images/generations`, `/images/edits`, fallback на Responses, цепочка моделей, ошибка размера |
       | `test/parser.test.js` | ИИ-парсер payload/result, песочница `node:vm`, архив |
       | `test/raster.test.js` | sharp/canvas/magick: кроп, trim, pad, split, scale |
       | `test/alpha.test.js` | альфа-канал и снятие фона |
       | `test/tools.test.js` | crop/pad/fit/resize/trim/split/compare, sink |
+      | `test/commands.test.js` | команды, их отчёты и отказы |
       | `test/roles.test.js` | planner/processor/corrector/learner/decorator |
       | `test/cli.test.js` | разбор аргументов, `--dry-run`, `--json`, коды выхода |
-- [ ] Сетевые тесты — за флагом `AI_IMAGE_NETWORK_TESTS=1`, по умолчанию выключены.
-- [ ] Отдельный прогон `node --check` по всем файлам `src/` и `bin/`.
+      | `test/syntax.test.js` | разбор всех файлов `src/` и `bin/` |
+      | `test/network.test.js` | реальные хосты — только за флагом |
+- [x] Сетевые тесты — за флагом `AI_IMAGE_NETWORK_TESTS=1`, по умолчанию выключены.
+- [x] Отдельный прогон `node --check` по всем файлам `src/` и `bin/`:
+      `npm run check` (скрипт `scripts/check-syntax.mjs`) и тест `test/syntax.test.js`.
 
 ---
 
