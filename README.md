@@ -1,6 +1,291 @@
-# u2ai-image-processor
+# @u2ai/images
 
-Processing images AI agent system…
+AI image processor: generation, editing, advanced sizing, cropping, padding, alpha channels
+and background removal over OpenAI-compatible backends.
 
 - Named CLI as `ai-image`.
-- Config in `~/.ai-image/*`
+- Config in `~/.ai-image/config.json`.
+- Node.js 26+, ESM, no SDK (plain `fetch`).
+- Local raster work through `sharp`, `canvas` and ImageMagick.
+
+The package was split out of the `ai` monolith: the picture work lives here, with its own
+configuration, its own purposes and its own tests. The monolith command `ai image` is a
+bridge that forwards to this CLI and returns its exit code.
+
+## Install
+
+```bash
+npm install -g @u2ai/images
+```
+
+From a checkout:
+
+```bash
+npm install
+npm link        # puts `ai-image` into PATH
+```
+
+The native dependencies (`sharp`, `canvas`) are installed by npm; a working ImageMagick
+binary is optional and only used as a fallback raster engine.
+
+## Quick start
+
+```bash
+ai-image config init                 # write ~/.ai-image/config.json
+export AI_IMAGE_API_KEY=sk-...       # or put the key into the config file
+
+ai-image generate "a red bicycle leaning on a wall" --size 1024x1024
+ai-image edit photo.png "make the sky stormy" --purpose edit --out stormy.png
+ai-image background logo.png --out logo-cut.png
+```
+
+Every command accepts `--json` (one machine-readable object on stdout), `--dry-run` (the plan
+without a single network call) and `--verbose`.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `generate` | Generate a picture from a prompt. |
+| `edit` | Edit a picture with a prompt, with optional reference pictures. |
+| `vectorize` | Turn a raster into an SVG document. |
+| `decorate` | Build a decorative layer: a CSS rule or an SVG file. |
+| `crop` | Crop a box out of a picture, or cut its padding off (`--trim`). |
+| `pad` | Extend the canvas to a frame without touching the picture. |
+| `fit` | Fit a picture into a frame (`contain`, `cover`, `fill`). |
+| `resize` | Change the size of a picture. |
+| `trim` | Cut the uniform or transparent edges off. |
+| `split` | Cut a picture into a grid of tiles. |
+| `alpha` | Build a real alpha channel for a picture. |
+| `background` | Remove the background of a picture. |
+| `compare` | Compare pictures: a sheet and a difference map. |
+| `info` | Tell what a picture is: format, frame, alpha, weight. |
+| `purpose` | Show the purpose map and the model each purpose resolves to. |
+| `process` | Run the agentic pipeline over a task (plan → make → check → note). |
+| `config` | Create, show or locate the configuration. |
+
+`ai-image --help` prints the same list with the flags of every group.
+
+## Examples
+
+```bash
+# generation with an explicit frame and format
+ai-image generate "a fox in the snow" --size 1536x1024 --format webp --count 2
+
+# an edit: the first picture is the source, the rest are references
+ai-image edit logo.png "make the background transparent" --reference mockup.png
+
+# a cut-out with a real alpha channel
+ai-image background product.png --out product-cut.png --alpha-mode mask
+
+# local work, no network
+ai-image crop photo.png --x 10 --y 20 --width 640 --height 480 --out cut.png
+ai-image trim photo.png --transparent-only --out tight.png
+ai-image fit photo.png --width 1200 --height 800 --mode cover --out fitted.png
+ai-image pad photo.png --width 2048 --height 2048 --color transparent
+ai-image split sheet.png --rows 3 --cols 2 --out tiles
+
+# a comparison sheet and a difference map
+ai-image compare before.png after.png --mode both --labels
+
+# a decorative layer: a CSS rule or a standalone SVG
+ai-image decorate "a ribbon banner" --kind css
+
+# what is this file?
+ai-image info photo.png --json
+```
+
+Without `--out`, a local command writes a derived file next to the source and never overwrites
+it (`photo-fit-contain.png`, `photo-trim.png`, `photo-pad.png`, …). `alpha` and `background`
+copy the source to the derived PNG first, so the original stays untouched. `decorate` writes
+`styles/decor/<name>.css` or `assets/decor/<name>.svg`.
+
+## The purpose system
+
+A purpose says what the picture is for; the purpose decides which model serves the request.
+
+| Purpose | Meaning |
+|---|---|
+| `decompose` | Layouts, templates, screen mockups: clean geometry, one style. |
+| `generate` | Plain text-to-image or a restyle. The general-purpose default. |
+| `edit` | A picture that is changed; the source keeps its frame and its content. |
+| `remove_background` | A subject cut out of its background. |
+| `upscale` | A picture that is enlarged while it keeps its quality. |
+| `unrotate` | A picture that is straightened. |
+
+Aliases are accepted everywhere: `isolate` and `isolate_object` name `remove_background`,
+`rectify` names `unrotate`.
+
+```bash
+ai-image purpose                       # the map and the resolved models
+ai-image generate "a landing hero" --purpose generate
+```
+
+An explicitly configured `imageModel` always wins over the purpose routing.
+
+## Configuration
+
+The configuration lives in `~/.ai-image/config.json` (`AI_IMAGE_HOME` moves the whole home
+directory). The file is created by `ai-image config init`; the fields the user is expected to
+edit are the only ones it holds — everything else stays on the defaults.
+
+```json
+{
+  "model": "moonshotai/kimi-k3.1-pro",
+  "imageModel": "openai/gpt-image-2.6-sunburst",
+  "vectorModel": null,
+  "backends": [
+    { "baseURL": "https://routerai.ru/api/v1", "env": "ROUTERAI_API_KEY" },
+    { "baseURL": "https://api.proxyapi.ru/v1", "env": "PROXYAPI_API_KEY" }
+  ],
+  "imagesBackends": [
+    { "baseURL": "https://api.proxyapi.ru/v1", "env": "PROXYAPI_API_KEY" }
+  ],
+  "image": {
+    "size": "auto",
+    "format": "png",
+    "background": "auto",
+    "outputDir": ".",
+    "alphaMode": "auto"
+  },
+  "purpose": {
+    "models": {
+      "generate": ["openai/gpt-image-2.6-sunburst"],
+      "edit": ["openai/gpt-image-2.6-sunburst"]
+    }
+  }
+}
+```
+
+The precedence is: defaults → `~/.ai-image/config.json` → `--config <file>` → `AI_IMAGE_*`
+environment → the flags of the command.
+
+The home directory holds:
+
+```
+~/.ai-image/
+  config.json      the configuration
+  prompts/         custom prompts
+  notes/           the notes of the agentic runs
+  diagnostics/     the raw answers of the API
+```
+
+### Environment
+
+| Variable | Meaning |
+|---|---|
+| `AI_IMAGE_HOME` | The home directory of the CLI (`~/.ai-image` by default). |
+| `AI_IMAGE_CONFIG` | The path of the configuration file. |
+| `AI_IMAGE_API_KEY` | The key of the API (`OPENAI_API_KEY` also works). |
+| `AI_IMAGE_BASE_URL` | The endpoint of the API (`OPENAI_BASE_URL` also works). |
+| `AI_IMAGE_TEXT_MODEL` | The text model of the roles and the parser. |
+| `AI_IMAGE_IMAGE_MODEL` | The picture model. |
+| `AI_IMAGE_VECTOR_MODEL` | The model that draws the SVG. |
+| `AI_IMAGE_BACKENDS` | The JSON list of the text backends. |
+| `AI_IMAGE_IMAGES_BACKENDS` | The JSON list of the picture backends. |
+| `AI_IMAGE_IMAGE_SIZE`, `AI_IMAGE_IMAGE_FORMAT`, `AI_IMAGE_IMAGE_BACKGROUND`, `AI_IMAGE_IMAGE_RESOLUTION` | The picture knobs. |
+| `AI_IMAGE_PURPOSE` | The default purpose. |
+| `AI_IMAGE_ALPHA_MODE` | The default alpha mode. |
+| `AI_IMAGE_RASTER_ENGINE`, `AI_IMAGE_MAGICK_PATH` | The local raster engine. |
+| `AI_IMAGE_TIMEOUT_MS`, `AI_IMAGE_RETRIES` | The limits of one request. |
+
+`AI_MODEL` and `AI_IMAGE_MODEL` keep the meaning they have in the monolith: the text model and
+the picture model.
+
+The messages of the configuration validator are in Russian, as in the sibling package
+`@u2ai/decomposer`; every other message of the CLI is in English.
+
+## Providers
+
+The package speaks the OpenAI-compatible API: `/images/generations`, `/images/edits`
+(multipart) and, when a host has no images route, the `image_generation` tool of the
+Responses API as a fallback.
+
+- A host that serves `/images/*` is asked there first.
+- A host without that route is asked through the Responses API; the error names the real
+  reason, not "the picture did not arrive".
+- A model that the host refuses is followed by the next model of the chain
+  (`fallback.models`), and the next backend of the pool.
+- `openai/*` models are served by `api.openai.com` or by a proxy host; a model of another
+  vendor needs a proxy host — the purpose map resolves the model only to a host that is
+  actually configured.
+
+The built-in purpose map uses `openai/gpt-image-2.6-sunburst` and
+`sourceful/riverflow-v2.6-pro`. The `seedream-5-5` route of the monolith is **not** ported:
+its asynchronous task API lives elsewhere. A user who serves it can add it back through
+`purpose.models.<purpose>`.
+
+## The local raster layer
+
+One language for every engine: a frame is `{ width, height, data }` with raw RGBA. The
+engines are tried in this order: `sharp` → `canvas` → ImageMagick. The engine can be pinned
+with `--engine auto|sharp|canvas|magick` or `image.rasterEngine`.
+
+- `sharp` is the fastest and the default when it is installed.
+- `canvas` is the fallback that needs no binary on the PATH.
+- ImageMagick is the last resort; it is the only engine that counts the palette colors, so
+  the vectorizer uses it when it is there.
+
+Alpha modes: `auto` (native alpha → `mask` → `contour` → `flat` → `key`), `mask`, `contour`,
+`flat`, `key`, `off`. A forced mode runs only its own step.
+
+The frames of a request are made in three ways: `direct` (the frame as it is), `align` (the
+canvas is padded, the content keeps its scale and its position, and the padding is cut off
+the answer) and `downscale` (the answer is scaled down, the proportions are kept).
+
+## The agentic pipeline
+
+```bash
+ai-image process "a hero picture for the landing page" --image mockup.png
+```
+
+The run is a pipeline of five stages: the notes of the past runs are read, the strategy is
+planned, the pictures are made, the result is checked and the note of the run is written to
+`~/.ai-image/notes/<date>.json`. Every role answers with a strict JSON of its own schema, and
+the answer is checked before it is used.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | The run succeeded. |
+| 1 | The run failed: the network, the model, the file. |
+| 2 | The arguments were wrong; nothing was tried. |
+| 130 | The run was interrupted. |
+
+## Library API
+
+```js
+import { main, loadConfig, PURPOSE_NAMES } from '@u2ai/images';
+
+const exitCode = await main(['generate', 'a red bicycle', '--size', '1024x1024']);
+```
+
+`main` is the whole CLI. `loadConfig` returns the merged configuration, and
+`createClient` (from `src/openai/client.js`) returns the HTTP client for the generation and
+the editing calls.
+
+## Limits
+
+- The vectorizer needs a provider that can answer with an SVG document; a raster-only
+  provider cannot vectorize.
+- The SVG of `decorate` is a text file: it is written and checked as text, not redrawn.
+- The picture size is bounded by the model family (`maxPixels`, `maxEdge`, `maxRatio`); a
+  request that does not fit is padded, scaled down or refused with the reason named.
+- ImageMagick may be absent; the command says which engines are missing instead of failing
+  with `ENOENT`.
+- The package never overwrites the source of a local operation.
+
+## Development
+
+```bash
+npm test          # the whole suite, offline
+npm run check     # node --check over every file of the package
+npm run test:network   # the calls to the real hosts (needs the keys)
+```
+
+The network tests are behind `AI_IMAGE_NETWORK_TESTS=1` and are skipped by default.
+
+## License
+
+MIT
