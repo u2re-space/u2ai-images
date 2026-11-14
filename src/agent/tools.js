@@ -288,6 +288,8 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
                     { type: 'input_image', image_url: `data:${kind.mime};base64,${bytes.toString('base64')}` },
                 ],
                 signal,
+                // The description is a text request of the run: it may go out as a part of a batch.
+                batchable: true,
             });
             return { file: rel(source), description: client.responses.text(answer) };
         },

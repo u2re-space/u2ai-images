@@ -61,6 +61,38 @@ export const defaults = {
     /** Fallback models: { "<model>": ["<fallback>", ...], "*": [...] }. */
     fallback: { enabled: true, models: {} },
 
+    // --- batch ---------------------------------------------------------------------
+    /**
+     * The batch route of the hosts: a file of requests goes out as one batch, the host works
+     * on it in the background, and the answers come back later.
+     *
+     * The route is two-phase: the first run submits the requests and stops, the second run
+     * takes the answers and goes on. Only the hosts that carry the flag `supports: { batch: true }`
+     * take part in it.
+     */
+    batch: {
+        /** Use the batch route at all. */
+        enabled: false,
+        /** The phase of the run: 'off' | 'submit' | 'fetch'. */
+        mode: 'off',
+        /** The route of the batch; null means the route of the host. */
+        endpoint: null,
+        /** The window the host serves the batch in. */
+        window: '24h',
+        /** How long the queue of a round waits for the last request, ms. */
+        collectMs: 1500,
+        /** How often the state of a batch is asked for, ms. */
+        pollMs: 5000,
+        /** How long the fetch waits for a batch that is not done yet, ms. */
+        waitMs: 0,
+        /** Max requests in one batch. */
+        maxRequests: 64,
+        /** Min requests in one batch: one is enough, the run is a chain of single questions. */
+        minRequests: 1,
+        /** Where the journal of the answers is kept, relative to the working directory. */
+        journalDir: '.ai-image/batch',
+    },
+
     // --- picture knobs --------------------------------------------------------
     image: {
         /** Frame of the picture: a preset, a free WIDTHxHEIGHT or auto. */
@@ -185,13 +217,21 @@ export function cloneDefaults() {
  * @returns {string}
  */
 export function defaultConfigText() {
+    // The hosts that serve the batch route carry the flag that says so: the requests of a
+    // round may go out as one batch there.
+    const batchHosts = new Set(['https://api.proxyapi.ru/v1', 'https://sprutdock.ru/v1']);
+    const withBatch = (list) => structuredClone(list).map((item) => (
+        batchHosts.has(item.baseURL)
+            ? { ...item, supports: { ...(item.supports ?? {}), batch: true } }
+            : item
+    ));
     const starter = {
         model: defaults.model,
         imageModel: defaults.imageModel,
         parserModel: defaults.parserModel,
         vectorModel: defaults.vectorModel,
-        backends: structuredClone(defaults.backends),
-        imagesBackends: structuredClone(defaults.imagesBackends),
+        backends: withBatch(defaults.backends),
+        imagesBackends: withBatch(defaults.imagesBackends),
         image: {
             size: defaults.image.size,
             format: defaults.image.format,
@@ -200,6 +240,7 @@ export function defaultConfigText() {
             alphaMode: defaults.image.alphaMode,
         },
         purpose: { models: structuredClone(defaults.purpose.models) },
+        batch: { enabled: false },
     };
     return `${JSON.stringify(starter, null, 2)}\n`;
 }

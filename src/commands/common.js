@@ -6,13 +6,15 @@
  * @depends node:path, openai/client
  * @usedBy commands/*
  * @exports usageError, numberOption, pictureFormat, outputTarget, engineOf, localTarget,
- *          createCommandClient, describeEvent, reportPlan, reportResult
+ *          batchSetup, createCommandClient, describeEvent, reportPlan, reportResult
  * @ai.tags cli, commands
  * @ai.hint keep
  */
 
 import path from 'node:path';
 import { createClient } from '../openai/client.js';
+import { createJournal } from '../openai/journal.js';
+import { ApiError } from '../openai/errors.js';
 
 /**
  * An error of the arguments: the command explains itself and the run ends with the code 2.
@@ -112,17 +114,59 @@ export function localTarget({ options, cwd = process.cwd(), input, suffix, ext =
 }
 
 /**
+ * The batch route of a run: the phase and the journal the two phases share.
+ *
+ * The route is two-phase by nature: the first run submits the requests and stops, the second
+ * one takes the answers and goes on. The journal is what the two phases share — the answer of
+ * a request is found by the hash of the request, not by the order of the calls.
+ * @param {{ config?: object|null, options?: object|null, cwd?: string }} ctx
+ * @returns {{ mode: 'off'|'submit'|'fetch', journal: object|null }}
+ * @exports
+ * @ai.hint pure
+ */
+export function batchSetup({ config = null, options = null, cwd = process.cwd() } = {}) {
+    const asked = options?.batchFetch
+        ? 'fetch'
+        : (options?.batch
+            ? 'submit'
+            : (config?.batch?.enabled === true
+                ? (config?.batch?.mode === 'fetch' ? 'fetch' : 'submit')
+                : 'off'));
+    if (asked === 'off') return { mode: 'off', journal: null };
+    const dir = path.resolve(cwd, String(config?.batch?.journalDir ?? '.ai-image/batch'));
+    return { mode: asked, journal: createJournal({ dir }) };
+}
+
+/**
  * The client of a command: the network is opened here and closed by the caller.
- * @param {{ config: object, env?: object, renderer?: object|null, signal?: AbortSignal|null }} ctx
- * @returns {object} the client
+ *
+ * With the batch route on, the client carries the journal: the answers of the first phase are
+ * taken from it, and the requests of the second phase are looked up in it.
+ * @param {{ config: object, env?: object, renderer?: object|null, signal?: AbortSignal|null,
+ *   options?: object|null, cwd?: string }} ctx
+ * @returns {Promise<object>} the client
  * @exports
  * @ai.hint io
  */
-export function createCommandClient({ config, env = process.env, renderer = null, signal = null }) {
-    return createClient({
+export async function createCommandClient({ config, env = process.env, renderer = null, signal = null,
+    options = null, cwd = process.cwd() }) {
+    const { mode, journal } = batchSetup({ config, options, cwd });
+    if (journal) await journal.init().catch(() => {});
+    const client = await createClient({
         config,
         env,
         signal,
+        batch: journal ? {
+            mode,
+            journal,
+            collectMs: config?.batch?.collectMs,
+            pollMs: config?.batch?.pollMs,
+            waitMs: config?.batch?.waitMs,
+            maxRequests: config?.batch?.maxRequests,
+            minRequests: config?.batch?.minRequests,
+            window: config?.batch?.window,
+            endpoint: config?.batch?.endpoint,
+        } : null,
         onEvent: renderer
             ? (event) => {
                 const text = describeEvent(event);
@@ -138,6 +182,23 @@ export function createCommandClient({ config, env = process.env, renderer = null
             }
             : null,
     });
+    if (journal) {
+        // The batch route needs a host that serves it: a host without the flag is never asked.
+        if (!client.batches.hosts().length) {
+            throw new ApiError('No host serves the batch route: put "supports": { "batch": true } into a '
+                + 'backend of the config, and give that backend a key.', { code: 'NO_BATCH_HOST' });
+        }
+        // The second phase: the answers of the submitted batches go into the journal, and the
+        // run goes on with them.
+        if (mode === 'fetch') {
+            const fetched = await client.batches.fetch();
+            if (!fetched.ready) {
+                throw new ApiError('The batch is not ready yet. Run the same command with --batch-fetch '
+                    + 'again later.', { code: 'BATCH_NOT_READY' });
+            }
+        }
+    }
+    return client;
 }
 
 /**
@@ -153,6 +214,15 @@ export function describeEvent(event) {
     if (event.type === 'request.error') return `${event.backend}: ${event.error}`;
     if (event.type === 'transport.fallback') return String(event.reason ?? 'the route changed');
     if (event.type === 'response.payload') return `the answer carries ${event.count ?? 1} picture(s)`;
+    if (event.type === 'host.broke') return `${event.backend} has no money left`;
+    if (event.type === 'model.fallback') return `${event.from} → ${event.to ?? 'no model'}`;
+    if (event.type === 'journal.hit') return 'the answer was already paid for';
+    if (event.type === 'batch.submit') return `the batch ${event.id} is submitted to ${event.host} (${event.requests} requests)`;
+    if (event.type === 'batch.fetched') return `the batch ${event.id} is done: ${event.answers} answers`;
+    if (event.type === 'batch.pending') return `the batch ${event.id} is not ready yet (${event.status ?? 'in progress'})`;
+    if (event.type === 'batch.poll') return `the batch ${event.id}: ${event.status ?? 'in progress'}`;
+    if (event.type === 'batch.missing') return `the batch ${event.id} is not known here (${event.host ?? 'the host is unknown'})`;
+    if (event.type === 'batch.failed') return `the batch did not work out: ${event.error}`;
     return event.message ?? event.type;
 }
 

@@ -51,7 +51,7 @@ export const ENUMS = Object.freeze({
     /** The ways a picture fits into a frame. */
     fitModes: Object.freeze(['contain', 'cover', 'fill']),
     /** Backend entries may declare which API routes the host serves. */
-    backendRoutes: Object.freeze(['responses', 'chat', 'images']),
+    backendRoutes: Object.freeze(['responses', 'chat', 'images', 'batch']),
 });
 
 /** Role names that always exist; user roles are validated against the schema only. */
@@ -64,6 +64,7 @@ export const SUPPORT_ALIASES = Object.freeze({
     responseapi: 'responses', responses: 'responses',
     chatapi: 'chat', chat: 'chat', chatcompletions: 'chat', completions: 'chat',
     imageapi: 'images', images: 'images',
+    batchapi: 'batch', batches: 'batch',
 });
 
 /** RFC 7230 token characters for header names in backend entries. */

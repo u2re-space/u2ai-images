@@ -86,7 +86,7 @@ export async function run(ctx) {
         renderer.plan({ model, size, resolution, format, purpose, output: target.target });
     }
 
-    const client = createCommandClient({ config, env, renderer });
+    const client = await createCommandClient({ config, env, renderer, options, cwd });
     try {
         const answer = await client.images.generate({
             model,

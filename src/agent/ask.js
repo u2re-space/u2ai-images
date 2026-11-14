@@ -71,6 +71,8 @@ export async function askRole({
         input,
         text: schemaEnvelope(name, schema),
         signal,
+        // The answer of a role is a text request of the run: it may go out as a part of a batch.
+        batchable: true,
     });
     const text = client.responses.text(answer);
     const data = parseJsonAnswer(text);

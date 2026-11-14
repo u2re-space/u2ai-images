@@ -51,7 +51,7 @@ export async function run(ctx) {
     await mkdir(path.dirname(output), { recursive: true });
     await copyFile(path.resolve(cwd, input), output);
 
-    const client = createCommandClient({ config, env, renderer });
+    const client = await createCommandClient({ config, env, renderer, options, cwd });
     try {
         const result = await applyGeneratedAlphaMask({
             client,

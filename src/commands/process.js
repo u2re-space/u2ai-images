@@ -63,7 +63,7 @@ export async function run(ctx) {
         renderer.plan({ model, size: options.size ?? null, format: options.format ?? null, purpose, output: plan.output });
     }
 
-    const client = createCommandClient({ config, env, renderer });
+    const client = await createCommandClient({ config, env, renderer, options, cwd });
     try {
         const report = await runPipeline({
             client,
@@ -108,7 +108,7 @@ export async function processReport(ctx) {
         config,
         stream: ctx.stdin ?? null,
     });
-    const client = createCommandClient({ config, env, renderer: ctx.renderer });
+    const client = await createCommandClient({ config, env, renderer: ctx.renderer, options, cwd });
     try {
         return await runPipeline({
             client,

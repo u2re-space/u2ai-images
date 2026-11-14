@@ -60,7 +60,7 @@ export async function run(ctx) {
     };
     if (options.dryRun) return reportPlan({ options, renderer }, plan);
 
-    const client = createCommandClient({ config, env, renderer });
+    const client = await createCommandClient({ config, env, renderer, options, cwd });
     try {
         const built = await buildDecoration({
             client,

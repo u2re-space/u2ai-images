@@ -64,6 +64,8 @@ export function parseArgv(argv) {
             kind: { type: 'string' },
             json: { type: 'boolean', default: false },
             'dry-run': { type: 'boolean', default: false },
+            batch: { type: 'boolean', default: false },
+            'batch-fetch': { type: 'boolean', default: false },
             verbose: { type: 'boolean', short: 'v', default: false },
             help: { type: 'boolean', short: 'h', default: false },
             version: { type: 'boolean', default: false },
@@ -115,6 +117,8 @@ export function parseArgv(argv) {
         kind: parsed.values.kind ?? null,
         json: parsed.values.json === true,
         dryRun: parsed.values['dry-run'] === true,
+        batch: parsed.values.batch === true,
+        batchFetch: parsed.values['batch-fetch'] === true,
         verbose: parsed.values.verbose === true,
         help: parsed.values.help === true,
         version: parsed.values.version === true,
@@ -152,6 +156,10 @@ export function configOverrides(options) {
     if (options.alphaMode) image.alphaMode = options.alphaMode;
     if (options.outDir) image.outputDir = options.outDir;
     if (Object.keys(image).length) overrides.image = image;
+    // The batch route is two-phase: `--batch` submits the requests and stops, `--batch-fetch`
+    // takes the answers and goes on.
+    if (options.batch) overrides.batch = { enabled: true, mode: 'submit' };
+    if (options.batchFetch) overrides.batch = { enabled: true, mode: 'fetch' };
     return overrides;
 }
 
@@ -240,6 +248,18 @@ export async function main(argv = process.argv.slice(2)) {
         if (error?.name === 'AbortError') {
             console.error('Aborted.');
             return 130;
+        }
+        // The batch is out: the answers are not here yet, and the run waits for them.
+        if (error?.code === 'BATCH_SUBMITTED') {
+            const id = error?.details?.batchId ?? '';
+            console.error(`The batch ${id ? `${id} ` : ''}was submitted — the answers are not here yet. `
+                + 'Run the same command with --batch-fetch.');
+            return 2;
+        }
+        // The batch is not done yet: the run has to be repeated later.
+        if (error?.code === 'BATCH_NOT_READY') {
+            console.error(error?.message ?? 'The batch is not ready yet.');
+            return 3;
         }
         const message = error?.message ?? String(error);
         if (options.json) {

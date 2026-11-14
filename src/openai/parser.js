@@ -55,6 +55,9 @@ const LOG_MAX_LINES = 40;
  * The one way the salvage route asks a model for text: a single non-streaming Responses call whose
  * answer is read as plain text. The client only needs `responses.create`, so a client object, a
  * fallback router, or a lazy wrapper over either works.
+ *
+ * The request is never batchable: the salvage script has to be written and run right now, in this
+ * run — a batch that comes back tomorrow is of no use here.
  * @param {{ responses: { create: Function } }} client
  * @returns {({ model: string, prompt: string, signal?: AbortSignal }) => Promise<string>}
  * @exports
@@ -67,6 +70,7 @@ export function makeParserInvoke(client) {
             store: false,
             input: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: prompt }] }],
             signal,
+            batchable: false,
         });
         return answer?.output_text ?? answer?.text ?? '';
     };
