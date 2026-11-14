@@ -256,5 +256,5 @@ test('the transport of a request follows the configuration', () => {
     assert.equal(imageTransport({ image: {}, imagesBackends: [{ baseURL: 'https://api.proxyapi.ru/v1' }] }), 'images');
     assert.equal(imageTransport({ image: {}, imagesBackends: [], backends: [], baseURL: 'https://api.openai.com/v1' }), 'responses');
     assert.equal(imageModelFor({ imageModel: 'my/model' }), 'my/model');
-    assert.equal(imageModelFor({ imageModel: null, image: {}, imagesBackends: [{ baseURL: 'x' }] }), 'openai/gpt-image-2.6-sunburst');
+    assert.equal(imageModelFor({ imageModel: null, image: {}, imagesBackends: [{ baseURL: 'x' }] }), 'bytedance-seed/seedream-5-5');
 });

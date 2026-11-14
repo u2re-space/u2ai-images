@@ -69,7 +69,7 @@ Batch options:
                         Only the hosts with "supports": { "batch": true } take part in it.
 
 Background removal:
-  The cut-out is asked of openai/gpt-image-2.6-sunburst and bytedance-seed/seedream-5-5: both
+  The cut-out is asked of bytedance-seed/seedream-5-5 and of openai/gpt-image-2.6-sunburst: both
   carry an alpha channel natively, so the picture is asked for a transparent background and the
   alpha of the answer is the answer. The mode auto takes the native alpha of the picture first,
   then asks the model, and falls back to the local contour.

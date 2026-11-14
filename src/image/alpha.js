@@ -84,14 +84,17 @@ export const ALPHA_MODES = Object.freeze(['auto', 'mask', 'contour', 'flat', 'ke
 /**
  * The models that draw a matte.
  *
- * A cut-out is a technical task, and only two of the picture models do it well: the sunburst of
- * OpenAI and the seedream of ByteDance. The other models answer with a picture of a picture, and
+ * A cut-out is a technical task, and only two of the picture models do it well: the seedream of
+ * ByteDance and the sunburst of OpenAI. The other models answer with a picture of a picture, and
  * the matte that comes out of it is a wide glow instead of an edge — so they are never asked for
  * a matte.
+ *
+ * The seedream is asked first: it keeps the frame of the source and cuts the subject out with a
+ * native alpha. The sunburst is the fallback.
  */
 export const MATTE_MODELS = Object.freeze([
-    'openai/gpt-image-2.6-sunburst',
     'bytedance-seed/seedream-5-5',
+    'openai/gpt-image-2.6-sunburst',
 ]);
 
 /**

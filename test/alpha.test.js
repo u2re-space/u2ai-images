@@ -252,13 +252,15 @@ test('the soft share tells a halo from a clean edge', async () => {
 test('the cut-out is asked of the two models that carry an alpha natively', () => {
     const config = cloneDefaults();
     assert.deepEqual(alphaModels({ config }),
-        ['openai/gpt-image-2.6-sunburst', 'bytedance-seed/seedream-5-5']);
+        ['bytedance-seed/seedream-5-5', 'openai/gpt-image-2.6-sunburst']);
     // The model of the caller goes first when it is one of them.
     assert.deepEqual(alphaModels({ config, model: 'bytedance-seed/seedream-5-5' }),
         ['bytedance-seed/seedream-5-5', 'openai/gpt-image-2.6-sunburst']);
+    assert.deepEqual(alphaModels({ config, model: 'openai/gpt-image-2.6-sunburst' }),
+        ['openai/gpt-image-2.6-sunburst', 'bytedance-seed/seedream-5-5']);
     // A model that cannot cut out is not asked for a cut-out.
     assert.deepEqual(alphaModels({ config, model: 'sourceful/riverflow-v2.6-pro' }),
-        ['openai/gpt-image-2.6-sunburst', 'bytedance-seed/seedream-5-5']);
+        ['bytedance-seed/seedream-5-5', 'openai/gpt-image-2.6-sunburst']);
 });
 
 test('the prompt of the cut-out names the subject when it is given', () => {
@@ -295,7 +297,7 @@ test('the next model is asked when the answer is not a cut-out', async () => {
         alphaMode: 'auto',
     });
     assert.equal(asked.length, 2, 'the second model was asked');
-    assert.equal(asked[0], 'openai/gpt-image-2.6-sunburst');
-    assert.equal(asked[1], 'bytedance-seed/seedream-5-5');
+    assert.equal(asked[0], 'bytedance-seed/seedream-5-5');
+    assert.equal(asked[1], 'openai/gpt-image-2.6-sunburst');
     assert.equal(result.changed, true, 'the local fallback finished the work');
 });

@@ -34,15 +34,14 @@ test('the aliases name the same purpose', () => {
     assert.deepEqual(Object.keys(PURPOSE_ALIASES).sort(), ['isolate', 'isolate_object', 'rectify']);
 });
 
-test('the cut-out is drawn only by the sunburst and the seedream', () => {
+test('the seedream draws every purpose and the cut-out has two models', () => {
     for (const purpose of PURPOSE_NAMES) {
         const models = purposeModels({}, purpose);
-        if (purpose === 'remove_background') continue;
-        assert.ok(!models.some((model) => model.includes('seedream')), `${purpose} has no seedream`);
+        assert.equal(models[0], 'bytedance-seed/seedream-5-5', `${purpose} starts with the seedream`);
     }
     assert.deepEqual(purposeModels({}, 'remove_background'), [
-        'openai/gpt-image-2.6-sunburst',
         'bytedance-seed/seedream-5-5',
+        'openai/gpt-image-2.6-sunburst',
     ]);
 });
 

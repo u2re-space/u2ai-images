@@ -20,7 +20,7 @@ export const defaults = {
     /** Text model: the agent roles and the AI parser talk through it. */
     model: 'minimax/minimax-m3.1-flash',
     /** Picture model: generate, edit and the technical alpha passes. */
-    imageModel: 'openai/gpt-image-2.6-sunburst',
+    imageModel: 'bytedance-seed/seedream-5-5',
     /** Model of the AI parser; null keeps the text model. */
     parserModel: null,
     /** Vector model (SVG); null keeps the picture model. */

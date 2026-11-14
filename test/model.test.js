@@ -17,6 +17,7 @@ import {
     imageModelProfile,
 } from '../src/model/profiles.js';
 import { fallbackChain, fallbackModels, modelFallback } from '../src/model/fallback.js';
+import { imageRequestSize, paddedSizeToMinPixels } from '../src/image/sizing.js';
 
 test('the profile of a known family is merged over the default', () => {
     const gpt = imageModelProfile('openai/gpt-image-2.6-sunburst');
@@ -50,9 +51,24 @@ test('the family of a model is named', () => {
     assert.equal(imageModelFamily('who/knows'), 'generic');
 });
 
+test('the seedream takes a free frame above its own floor', () => {
+    const seedream = imageModelProfile('bytedance-seed/seedream-5-5');
+    assert.equal(seedream.customSizes, true);
+    // The host refuses a frame below 960×960 pixels.
+    assert.equal(seedream.minPixels, 921_600);
+    assert.equal(imageModelFamily('bytedance-seed/seedream-5-5'), 'seedream');
+    // A frame of its own is kept as it is.
+    assert.equal(imageRequestSize('1200x800', 'bytedance-seed/seedream-5-5'), '1200x800');
+    // A frame below the floor is padded up to it instead of being refused.
+    const padded = paddedSizeToMinPixels('281x326', 'bytedance-seed/seedream-5-5');
+    assert.ok(padded, 'the crop is padded');
+    assert.ok(padded.width * padded.height >= 921_600, 'the canvas clears the floor');
+});
+
 test('the fallback of a model is the same model under its catalog name', () => {
     assert.equal(modelFallback('gpt-image-2.6-sunburst'), 'openai/gpt-image-2.6-sunburst');
     assert.equal(modelFallback('openai/gpt-image-2.6-sunburst'), null);
+    assert.equal(modelFallback('seedream-5-5'), 'bytedance-seed/seedream-5-5');
     assert.equal(modelFallback(null), null);
 });
 

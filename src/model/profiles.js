@@ -4,7 +4,8 @@
  * @purpose What an image model is known to accept: the frame it takes, the fields
  *          it understands and the ways its gateway misbehaves.
  * @exports IMAGE_MODEL_PROFILES, DEFAULT_PROFILE, imageModelProfile, imageModelFamily,
- *          MIN_IMAGE_PIXELS, MAX_IMAGE_PIXELS, MAX_IMAGE_EDGE, MAX_IMAGE_RATIO
+ *          MIN_IMAGE_PIXELS, MAX_IMAGE_PIXELS, MAX_IMAGE_EDGE, MAX_IMAGE_RATIO,
+ *          SEEDREAM, SEEDREAM_MODEL, DEFAULT_IMAGE_MODEL
  * @ai.tags model, images
  * @ai.hint keep
  */
@@ -17,9 +18,13 @@ export const GPT_IMAGE_26 = /^(?:openai\/)?gpt-image-2\.6(?:-|$)/i;
 export const RIVERFLOW = /(?:^|\/)riverflow-/i;
 /** The Recraft vector family — a ratio-tuned model that draws the SVG itself. */
 export const RECRAFT_VECTOR = /(?:^|\/)recraft[^/]*vector/i;
+/** The ByteDance Seedream family — a model with free frames and a floor of 960×960 pixels. */
+export const SEEDREAM = /(?:^|\/)seedream/i;
 
 /** The default picture model of the CLI. */
-export const DEFAULT_IMAGE_MODEL = 'openai/gpt-image-2.6-sunburst';
+export const DEFAULT_IMAGE_MODEL = 'bytedance-seed/seedream-5-5';
+/** The Seedream model of ByteDance: the picture model of the default. */
+export const SEEDREAM_MODEL = 'bytedance-seed/seedream-5-5';
 /** The Riverflow model: an opt-in id, not every gateway serves it. */
 export const RIVERFLOW_MODEL = 'sourceful/riverflow-v2.6-pro';
 
@@ -83,6 +88,16 @@ export const DEFAULT_PROFILE = Object.freeze({
 export const IMAGE_MODEL_PROFILES = Object.freeze([
     Object.freeze({ match: GPT_IMAGE_26, customSizes: true, div16Padding: true, complexity: 'high' }),
     Object.freeze({ match: GPT_IMAGE_25, customSizes: true, div16Padding: true }),
+    // Seedream takes a free frame, but the host refuses a frame below 960×960 pixels: the
+    // floor is the model's own, and it is what the small crops are padded up to.
+    Object.freeze({
+        match: SEEDREAM,
+        customSizes: true,
+        minPixels: 921_600,
+        maxPixels: 16_777_216,
+        maxEdge: 4096,
+        maxRatio: 4,
+    }),
     Object.freeze({
         match: RIVERFLOW,
         customSizes: true,
@@ -117,7 +132,7 @@ export function imageModelProfile(model) {
 /**
  * The family of one model id: the name the rules are written for.
  * @param {string|null|undefined} model
- * @returns {string} 'gpt-image-2.6' | 'gpt-image-2.5' | 'riverflow' | 'recraft-vector' | 'generic'
+ * @returns {string} 'gpt-image-2.6' | 'gpt-image-2.5' | 'riverflow' | 'recraft-vector' | 'seedream' | 'generic'
  */
 export function imageModelFamily(model) {
     const name = String(model ?? '').trim();
@@ -125,6 +140,7 @@ export function imageModelFamily(model) {
     if (GPT_IMAGE_25.test(name)) return 'gpt-image-2.5';
     if (RIVERFLOW.test(name)) return 'riverflow';
     if (RECRAFT_VECTOR.test(name)) return 'recraft-vector';
+    if (SEEDREAM.test(name)) return 'seedream';
     return 'generic';
 }
 

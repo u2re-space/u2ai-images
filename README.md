@@ -75,11 +75,11 @@ ai-image generate "a fox in the snow" --size 1536x1024 --format webp --count 2
 # an edit: the first picture is the source, the rest are references
 ai-image edit logo.png "make the background transparent" --reference mockup.png
 
-# a cut-out with a real alpha channel
+# a cut-out with the model of the configuration (the seedream)
 ai-image background product.png --out product-cut.png --alpha-mode mask
 
-# a cut-out of the second model of the list
-ai-image background product.png --out product-cut.png --image-model bytedance-seed/seedream-5-5
+# a cut-out with the second model of the list
+ai-image background product.png --out product-cut.png --image-model openai/gpt-image-2.6-sunburst
 
 # a cut-out that keeps one object only: the fragments of the neighbours go away
 ai-image background bishop.png --subject "chess bishop" --out bishop.png
@@ -138,7 +138,7 @@ edit are the only ones it holds — everything else stays on the defaults.
 ```json
 {
   "model": "moonshotai/kimi-k3.1-pro",
-  "imageModel": "openai/gpt-image-2.6-sunburst",
+  "imageModel": "bytedance-seed/seedream-5-5",
   "vectorModel": null,
   "backends": [
     { "baseURL": "https://routerai.ru/api/v1", "env": "ROUTERAI_API_KEY" },
@@ -156,8 +156,8 @@ edit are the only ones it holds — everything else stays on the defaults.
   },
   "purpose": {
     "models": {
-      "generate": ["openai/gpt-image-2.6-sunburst"],
-      "edit": ["openai/gpt-image-2.6-sunburst"]
+      "generate": ["bytedance-seed/seedream-5-5"],
+      "edit": ["bytedance-seed/seedream-5-5"]
     }
   },
   "batch": {
@@ -224,10 +224,16 @@ Responses API as a fallback.
   vendor needs a proxy host — the purpose map resolves the model only to a host that is
   actually configured.
 
-The built-in purpose map uses `openai/gpt-image-2.6-sunburst` and
-`sourceful/riverflow-v2.6-pro`. The cut-out has its own short list: `seedream-5-5` is asked
-for a background removal only, through the OpenAI-compatible route of the gateway — its
-asynchronous task API of the monolith is not ported.
+The built-in purpose map starts with `bytedance-seed/seedream-5-5`: it draws the picture, it
+cuts the subject out with a native alpha and it keeps the frame of the source.
+`openai/gpt-image-2.6-sunburst` and `sourceful/riverflow-v2.6-pro` follow as the fallbacks —
+they are asked when the seedream is unknown to a host or refuses the request. The cut-out has
+its own short list: only the seedream and the sunburst are asked for a background removal,
+through the OpenAI-compatible route of the gateway — the asynchronous task API of the monolith
+is not ported.
+
+The seedream takes a free frame, but the host refuses a frame below 960×960 pixels: a crop
+smaller than that is padded up to the floor, and the padding is cut off the answer.
 
 ### The cut-out
 
@@ -237,8 +243,8 @@ transparent background and the alpha of the answer is the answer.
 
 | Model | Role |
 |---|---|
-| `openai/gpt-image-2.6-sunburst` | The first one that is asked. |
-| `bytedance-seed/seedream-5-5` | The second one: it goes first when the caller names it. |
+| `bytedance-seed/seedream-5-5` | The first one that is asked: the picture model of the default. |
+| `openai/gpt-image-2.6-sunburst` | The second one: the fallback of the cut-out. |
 
 The answer is judged before it is accepted: a picture without a real alpha, or one that
 leaves a wide halo around the edge, is not a cut-out — the next model of the list is asked.

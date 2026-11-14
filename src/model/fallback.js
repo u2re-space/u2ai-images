@@ -17,6 +17,7 @@ const textOf = (value) => (typeof value === 'string' ? value : '');
  */
 export const MODEL_FALLBACKS = Object.freeze({
     // the picture models, bare -> prefixed
+    'seedream-5-5': 'bytedance-seed/seedream-5-5',
     'gpt-image-2.5': 'openai/gpt-image-2.5',
     'gpt-image-2.5-flare': 'openai/gpt-image-2.5-flare',
     'gpt-image-2.5-sunburst': 'openai/gpt-image-2.5-sunburst',

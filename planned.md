@@ -752,6 +752,28 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
 
 ---
 
+## 20. Seedream-5-5 как модель картинок по умолчанию
+
+- [x] `bytedance-seed/seedream-5-5` — основная модель картинок: `DEFAULT_IMAGE_MODEL`,
+      `defaults.imageModel` и первая строка `PURPOSE_MODEL_MAP` во всех назначениях.
+      `openai/gpt-image-2.6-sunburst` и `sourceful/riverflow-v2.6-pro` — запасные.
+- [x] Профиль seedream (`src/model/profiles.js`): `customSizes` (свободный кадр),
+      `minPixels: 921_600` (host отказывает в кадре меньше 960×960), `maxPixels: 16_777_216`,
+      `maxEdge: 4096`, `maxRatio: 4`. Без профиля запрос `1200x800` превращался в пресет
+      `1024x768` (786 432 пикселя) и host отвечал 400.
+- [x] `MATTE_MODELS`: seedream идёт первым в цепочке вырезки, sunburst — запасной.
+- [x] `MODEL_FALLBACKS`: `seedream-5-5` → `bytedance-seed/seedream-5-5`.
+- [x] `imageModelFamily` знает семейство `seedream`.
+- [x] README (EN) и `src/help.js` (EN): новая модель по умолчанию, её пол по пикселям и
+      порядок моделей вырезки.
+- [x] Тесты: порядок моделей вырезки, seedream в каждом назначении, профиль seedream
+      (свободный кадр, пол по пикселям, padding маленького кропа), дефолт `imageModelFor`.
+- [x] Живые прогоны (routerai): генерация `1200x800` seedream (кадр сохранён, 1200×800);
+      вырезка епископа из кропа (`--subject "chess bishop"`) — только seedream, реальная
+      альфа (cleared 0.704, soft 0.017), куска доски в пешке нет.
+
+---
+
 ## Порядок работы и зависимости шагов
 
 ```

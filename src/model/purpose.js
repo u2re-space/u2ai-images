@@ -50,33 +50,43 @@ export function canonicalPurpose(purpose) {
  * The built-in order of models per purpose: the first model that the gateway
  * serves wins.
  *
- * The cut-out has its own short list: only `gpt-image-2.6-sunburst` and
- * `seedream-5-5` are asked for a matte. The asynchronous route of the monolith
+ * The seedream of ByteDance is the first model of every purpose: it draws the
+ * picture, cuts the subject out with a native alpha and keeps the frame of the
+ * source. The sunburst of OpenAI is the fallback — it is asked when the seedream
+ * is unknown to a host or refuses the request.
+ *
+ * The cut-out has its own short list: only `seedream-5-5` and
+ * `gpt-image-2.6-sunburst` are asked for a matte. The asynchronous route of the monolith
  * is not ported — the seedream model is served here through the
  * OpenAI-compatible route of the gateway.
  */
 export const PURPOSE_MODEL_MAP = Object.freeze({
     decompose: Object.freeze([
+        'bytedance-seed/seedream-5-5',
         'sourceful/riverflow-v2.6-pro',
         'openai/gpt-image-2.6-sunburst',
     ]),
     generate: Object.freeze([
+        'bytedance-seed/seedream-5-5',
         'sourceful/riverflow-v2.6-pro',
         'openai/gpt-image-2.6-sunburst',
     ]),
     edit: Object.freeze([
+        'bytedance-seed/seedream-5-5',
         'openai/gpt-image-2.6-sunburst',
         'sourceful/riverflow-v2.6-pro',
     ]),
     remove_background: Object.freeze([
-        'openai/gpt-image-2.6-sunburst',
         'bytedance-seed/seedream-5-5',
+        'openai/gpt-image-2.6-sunburst',
     ]),
     upscale: Object.freeze([
+        'bytedance-seed/seedream-5-5',
         'openai/gpt-image-2.6-sunburst',
         'sourceful/riverflow-v2.6-pro',
     ]),
     unrotate: Object.freeze([
+        'bytedance-seed/seedream-5-5',
         'openai/gpt-image-2.6-sunburst',
         'sourceful/riverflow-v2.6-pro',
     ]),
