@@ -1,0 +1,48 @@
+<svg viewBox="0 0 816 816" xmlns="http://www.w3.org/2000/svg" width="816" height="816" role="img" aria-labelledby="award-title">
+  <title id="award-title">AWARD WINNING AGENCY · SINCE 2022 ·</title>
+  <circle cx="408" cy="408" r="408" fill="#1d1d1d" />
+  <g fill="#faf8f2" font-family="Inter, Roboto, Helvetica, Arial, sans-serif" font-size="54" font-weight="400" text-anchor="middle" dominant-baseline="central">
+    <g id="award">
+      <text transform="translate(150 573) rotate(-123)">A</text>
+      <text transform="translate(119 529) rotate(-112)">W</text>
+      <text transform="translate(102 477) rotate(-103)">A</text>
+      <text transform="translate(94 422) rotate(-92)">R</text>
+      <text transform="translate(97 365) rotate(-82)">D</text>
+    </g>
+    <g id="winning">
+      <text transform="translate(125 273) rotate(-65)">W</text>
+      <text transform="translate(154 232) rotate(-55)">I</text>
+      <text transform="translate(181 201) rotate(-47)">N</text>
+      <text transform="translate(216 169) rotate(-39)">N</text>
+      <text transform="translate(254 143) rotate(-30)">I</text>
+      <text transform="translate(299 120) rotate(-21)">N</text>
+      <text transform="translate(355 100) rotate(-10)">G</text>
+    </g>
+    <g id="agency">
+      <text transform="translate(453 96) rotate(8)">A</text>
+      <text transform="translate(508 105) rotate(19)">G</text>
+      <text transform="translate(555 125) rotate(28)">E</text>
+      <text transform="translate(600 153) rotate(38)">N</text>
+      <text transform="translate(644 193) rotate(48)">C</text>
+      <text transform="translate(675 230) rotate(56)">Y</text>
+    </g>
+    <g id="since">
+      <text transform="translate(724 415) rotate(91)">S</text>
+      <text transform="translate(722 453) rotate(98)">I</text>
+      <text transform="translate(711 496) rotate(106)">N</text>
+      <text transform="translate(688 549) rotate(117)">C</text>
+      <text transform="translate(656 590) rotate(126)">E</text>
+    </g>
+    <g id="year">
+      <text transform="translate(527 689) rotate(157)">2</text>
+      <text transform="translate(469 707) rotate(169)">0</text>
+      <text transform="translate(412 712) rotate(179)">2</text>
+      <text transform="translate(355 705) rotate(190)">2</text>
+    </g>
+  </g>
+  <g id="separators" fill="none" stroke="#faf8f2" stroke-width="10" stroke-linecap="round">
+    <path d="M709.5 320.5 L717.5 306.5" />
+    <path d="M223 654.5 L235 666.5" />
+  </g>
+  <path id="mark" fill="#faf8f2" d="M326 289 H352 Q377 289 377 314 V347 Q377 361 392 361 H427 Q451 361 451 385 V419 Q451 434 466 434 H494 Q518 434 518 458 V489 Q518 514 494 514 H469 Q446 514 446 489 V453 Q446 438 431 438 H392 Q377 438 377 453 V489 Q377 514 353 514 H326 Q301 514 301 489 V314 Q301 289 326 289 Z" />
+</svg>
