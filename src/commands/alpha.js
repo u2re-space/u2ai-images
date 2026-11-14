@@ -34,6 +34,8 @@ export async function run(ctx) {
         throw usageError('Give the picture: `ai-image alpha picture.png --alpha-mode key`.');
     }
     const mode = String(options.alphaMode ?? config?.image?.alphaMode ?? 'auto').trim().toLowerCase();
+    // The subject is what the model has to keep: the name of the object of the picture.
+    const subject = String(options.subject ?? '').trim() || null;
     const output = localTarget({ options, cwd, input, suffix: 'alpha', ext: '.png' });
 
     const plan = {
@@ -41,6 +43,7 @@ export async function run(ctx) {
         input,
         output: path.relative(cwd, output).split(path.sep).join('/'),
         mode,
+        ...(subject ? { subject } : {}),
     };
     if (options.dryRun) return reportPlan({ options, renderer }, plan);
 
@@ -59,6 +62,7 @@ export async function run(ctx) {
             signal: null,
             model: options.imageModel ?? null,
             alphaMode: mode,
+            subject,
         });
         if (!result.changed && result.reason !== 'already') {
             renderer.line('warn', `The alpha channel was not built: ${result.reason}.`);

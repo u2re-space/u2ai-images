@@ -16,6 +16,7 @@ import {
     alphaModels,
     applyGeneratedAlphaMask,
     clearedShare,
+    cutoutPrompt,
     frameFor,
     hasRealAlpha,
     isFakePlate,
@@ -258,6 +259,16 @@ test('the cut-out is asked of the two models that carry an alpha natively', () =
     // A model that cannot cut out is not asked for a cut-out.
     assert.deepEqual(alphaModels({ config, model: 'sourceful/riverflow-v2.6-pro' }),
         ['openai/gpt-image-2.6-sunburst', 'bytedance-seed/seedream-5-5']);
+});
+
+test('the prompt of the cut-out names the subject when it is given', () => {
+    assert.equal(cutoutPrompt(null), cutoutPrompt(''));
+    assert.match(cutoutPrompt(null), /make everything around it fully transparent/);
+
+    const named = cutoutPrompt('chess bishop');
+    assert.match(named, /keep only the chess bishop/);
+    // The fragments of the neighbours have to go too.
+    assert.match(named, /fragment of a neighbouring object/);
 });
 
 test('the next model is asked when the answer is not a cut-out', async () => {

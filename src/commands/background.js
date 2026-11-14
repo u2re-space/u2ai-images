@@ -35,6 +35,8 @@ export async function run(ctx) {
     // The background of a picture is removed by building an alpha channel: `auto` is the mode
     // that tries every way of cutting it out.
     const mode = String(options.alphaMode ?? 'auto').trim().toLowerCase();
+    // The subject is what the model has to keep: the name of the object of the picture.
+    const subject = String(options.subject ?? '').trim() || null;
     const output = localTarget({ options, cwd, input, suffix: 'background', ext: '.png' });
 
     const plan = {
@@ -42,6 +44,7 @@ export async function run(ctx) {
         input,
         output: path.relative(cwd, output).split(path.sep).join('/'),
         mode,
+        ...(subject ? { subject } : {}),
     };
     if (options.dryRun) return reportPlan({ options, renderer }, plan);
 
@@ -60,6 +63,7 @@ export async function run(ctx) {
             signal: null,
             model: options.imageModel ?? null,
             alphaMode: mode,
+            subject,
         });
         if (!result.changed && result.reason !== 'already') {
             renderer.line('warn', `The background was not removed: ${result.reason}.`);

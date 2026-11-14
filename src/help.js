@@ -24,8 +24,8 @@ export const COMMANDS = Object.freeze([
     { name: 'resize', summary: 'Change the size of a picture.', usage: 'ai-image resize <file> [--width <n>] [--height <n>]' },
     { name: 'trim', summary: 'Cut the uniform or transparent edges off.', usage: 'ai-image trim <file> [--fuzz <n>]' },
     { name: 'split', summary: 'Cut a picture into a grid of tiles.', usage: 'ai-image split <file> --rows <n> --cols <n>' },
-    { name: 'alpha', summary: 'Build a real alpha channel for a picture.', usage: 'ai-image alpha <file> [--alpha-mode auto|mask|contour|flat|key|off]' },
-    { name: 'background', summary: 'Remove the background of a picture.', usage: 'ai-image background <file> [--alpha-mode auto|mask|contour|flat|key|off]' },
+    { name: 'alpha', summary: 'Build a real alpha channel for a picture.', usage: 'ai-image alpha <file> [--alpha-mode auto|mask|contour|flat|key|off] [--subject <text>]' },
+    { name: 'background', summary: 'Remove the background of a picture.', usage: 'ai-image background <file> [--alpha-mode auto|mask|contour|flat|key|off] [--subject <text>]' },
     { name: 'compare', summary: 'Compare pictures: a sheet and a difference map.', usage: 'ai-image compare <file> <file> [--mode sheet|difference|both]' },
     { name: 'info', summary: 'Tell what a picture is: format, frame, alpha, weight.', usage: 'ai-image info <file>' },
     { name: 'purpose', summary: 'Show the purpose map and the model each purpose resolves to.', usage: 'ai-image purpose [--list]' },
@@ -101,6 +101,8 @@ Local options:
       --alpha-mode <name>  Alpha mode: auto | mask | contour | flat | key | off.
                            The mode mask asks the model to cut the subject out; the mode auto
                            takes the native alpha of the picture first.
+      --subject <text>    What the cut-out has to keep: the name of the object.
+                           Everything else goes away, the fragments of the neighbours too.
       --layout <name>   Layout of the comparison: row | column | grid.
       --frame <shape>   Frame of the comparison: 16:9, 2.39:1, 800x600.
       --gap <n>         The gap between the cells of the comparison.
@@ -118,6 +120,7 @@ Examples:
   ai-image trim photo.png --transparent-only --out tight.png
   ai-image fit photo.png --width 1200 --height 800 --mode cover
   ai-image background logo.png --out logo-cut.png
+  ai-image background bishop.png --subject "chess bishop" --out bishop.png
   ai-image compare before.png after.png --mode both --labels
   ai-image info photo.png --json
   ai-image purpose

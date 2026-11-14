@@ -5,7 +5,7 @@
  *          the object keeps an anti-aliased transition instead of a halo.
  * @depends node:path, node:fs/promises, image/raster, openai/images, model/profiles
  * @usedBy commands/alpha, commands/background, commands/generate, commands/edit
- * @exports CUTOUT_PROMPT, ALPHA_MODES, MATTE_MODELS,
+ * @exports CUTOUT_PROMPT, cutoutPrompt, ALPHA_MODES, MATTE_MODELS,
  *          MIN_CLEARED_SHARE, MAX_SOFT_SHARE, MIN_SOFT_PIXELS, hasRealAlpha, localKeyAlpha,
  *          localMatte, flatAlphaFallback, isFakePlate, judgeAlphaShares, clearedShare, softShare,
  *          frameFor, maskPassModel, alphaModels, askModel, isRaster, applyGeneratedAlphaMask,
@@ -54,6 +54,29 @@ import {
 export const CUTOUT_PROMPT = 'Cut the subject out of the attached picture: keep the subject, its colors, its details, '
     + 'its proportions and its position exactly as they are, and make everything around it fully transparent. '
     + 'Do not crop, move, resize or repaint the subject, do not add anything, and keep the frame of the picture.';
+
+/**
+ * The prompt of the cut-out when the subject is named.
+ *
+ * A crop of a screenshot often holds more than one object: the piece of the board that fell
+ * into the cut of the bishop, the edge of a neighbour in the cut of the board. The unnamed
+ * prompt keeps the subject and the fragments alike; naming the subject tells the model what
+ * has to stay and what has to go.
+ *
+ * @param {string|null} [subject] what has to be kept, in the words of the user
+ * @returns {string}
+ * @exports
+ * @ai.hint pure
+ */
+export function cutoutPrompt(subject = null) {
+    const wanted = String(subject ?? '').trim();
+    if (!wanted) return CUTOUT_PROMPT;
+    return `Cut the subject out of the attached picture: keep only the ${wanted} — its colors, its details, `
+        + 'its proportions and its position exactly as they are — and make everything else fully transparent. '
+        + 'Every other object, every fragment of a neighbouring object and every part of the background '
+        + 'must disappear; the frame of the picture stays as it is. '
+        + 'Do not crop, move, resize or repaint the subject, and do not add anything.';
+}
 
 /** The modes of the alpha pipeline. */
 export const ALPHA_MODES = Object.freeze(['auto', 'mask', 'contour', 'flat', 'key', 'off']);
@@ -421,9 +444,9 @@ export function alphaFormatWarning(file) {
  * @returns {Promise<{ applied: boolean, error?: Error, model?: string|null, verdict?: object }>}
  * @ai.hint io
  */
-async function modelAlphaPass({ client, config, base, abs, cwd, signal, model, engine, totalPixels }) {
+async function modelAlphaPass({ client, config, base, abs, cwd, signal, model, engine, totalPixels, subject = null }) {
     const answer = await askModel({
-        client, config, file: base, prompt: CUTOUT_PROMPT, signal, model, background: 'transparent',
+        client, config, file: base, prompt: cutoutPrompt(subject), signal, model, background: 'transparent',
     });
     if (!isRaster(answer)) {
         return { applied: false, error: answer?.error ?? new Error('The model answered without a picture.') };
@@ -464,7 +487,7 @@ async function modelAlphaPass({ client, config, base, abs, cwd, signal, model, e
  * transparency plate.
  * @param {{ client?: object|null, config?: object|null, file: string, signal?: AbortSignal,
  *   model?: string|null, alphaSource?: string|null, feather?: number,
- *   alphaMode?: string }} options
+ *   alphaMode?: string, subject?: string|null }} options
  * @returns {Promise<{ changed: boolean, reason: string, model?: string|null,
  *   source?: string|null, softEdge?: boolean, error?: Error }>}
  * @exports
@@ -479,6 +502,7 @@ export async function applyGeneratedAlphaMask({
     alphaSource = null,
     feather = config?.image?.alphaFeather ?? 1,
     alphaMode = config?.image?.alphaMode ?? 'auto',
+    subject = null,
 } = {}) {
     const mode = String(alphaMode || 'auto').toLowerCase();
     if (mode === 'off') return { changed: false, reason: 'off' };
@@ -508,6 +532,7 @@ export async function applyGeneratedAlphaMask({
     const merged = {
         model: null,
         source: base === abs ? null : path.relative(process.cwd(), base).split(path.sep).join('/'),
+        ...(String(subject ?? '').trim() ? { subject: String(subject).trim() } : {}),
         ...(softEdge ? { softEdge: true } : {}),
     };
     /** Why the model did not deliver a cut-out; reported with the local fallback. */
@@ -517,7 +542,7 @@ export async function applyGeneratedAlphaMask({
     if ((mode === 'auto' || mode === 'mask') && client?.images) {
         for (const candidate of alphaModels({ config, model })) {
             const result = await modelAlphaPass({
-                client, config, base, abs, cwd, signal, model: candidate, engine, totalPixels,
+                client, config, base, abs, cwd, signal, model: candidate, engine, totalPixels, subject,
             });
             if (result.applied) {
                 return {

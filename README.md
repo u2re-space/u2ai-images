@@ -81,6 +81,9 @@ ai-image background product.png --out product-cut.png --alpha-mode mask
 # a cut-out of the second model of the list
 ai-image background product.png --out product-cut.png --image-model bytedance-seed/seedream-5-5
 
+# a cut-out that keeps one object only: the fragments of the neighbours go away
+ai-image background bishop.png --subject "chess bishop" --out bishop.png
+
 # local work, no network
 ai-image crop photo.png --x 10 --y 20 --width 640 --height 480 --out cut.png
 ai-image trim photo.png --transparent-only --out tight.png
@@ -241,6 +244,16 @@ The answer is judged before it is accepted: a picture without a real alpha, or o
 leaves a wide halo around the edge, is not a cut-out — the next model of the list is asked.
 A cut-out of a padded source names the zone of the content in the prompt, so the model cuts
 the object out of the picture and does not take the empty canvas for the background.
+
+A crop of a screenshot often holds more than one object: the piece of the board that fell
+into the cut of the bishop, the edge of a neighbour in the cut of the board. The flag
+`--subject <text>` names the object that has to stay — the fragments of the neighbours and
+everything else are told to disappear. The same text goes into the prompt of the command
+`edit` when the caller builds one.
+
+```bash
+ai-image background bishop.png --subject "chess bishop" --out bishop-cut.png
+```
 
 A user who wants a technical override names it: `image.maskModel` (`self` means the model
 that drew the picture) takes the place of the list.

@@ -83,6 +83,13 @@ test('the parser leaves the flags that were not given empty', () => {
     assert.equal(options.count, 1);
     assert.equal(options.json, false);
     assert.equal(options.trim, false);
+    assert.equal(options.subject, null);
+});
+
+test('the parser reads the subject of the cut-out', () => {
+    const options = parseArgv(['background', 'a.png', '--subject', 'chess bishop']);
+    assert.equal(options.command, 'background');
+    assert.equal(options.subject, 'chess bishop');
 });
 
 test('the flags of the configuration only carry what was given', () => {
