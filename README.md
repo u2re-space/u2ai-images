@@ -341,6 +341,26 @@ const exitCode = await main(['generate', 'a red bicycle', '--size', '1024x1024']
 `createClient` (from `src/openai/client.js`) returns the HTTP client for the generation and
 the editing calls.
 
+## The access layer
+
+`src/access` is the door between the model and the machine: the files and the commands under one
+root. Both halves work through a backend, so the same rules hold on a native disk, in the memory,
+or over a remote one.
+
+```js
+import { createAccess } from './src/access/index.js';
+
+const access = createAccess({ root: process.cwd() });
+
+await access.fs.writeText('notes/todo.md', '# todo');
+const found = await access.fs.search({ query: 'todo' });
+const answer = await access.exec.run('node', ['--version']);
+```
+
+The rules of the paths live in one place and are never optional: a path may not leave the root —
+neither through `..` nor through a symbolic link — the secret files and the secret directories are
+never accessible, and the read-only directories may be read, but never written.
+
 ## Limits
 
 - The vectorizer needs a provider that can answer with an SVG document; a raster-only
