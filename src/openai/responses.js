@@ -35,8 +35,10 @@ export function buildResponsesBody({
     if (toolChoice) body.tool_choice = toolChoice;
     if (store) body.store = true;
     if (stream) body.stream = true;
-    // The strict answer of a role: the shape the model has to fill.
-    if (text) body.text = text;
+    // The strict answer of a role: the shape the model has to fill. The API keeps it under
+    // `text.format` — `text.type` is not a field of the request, and a host that follows the
+    // spec answers with "Unknown parameter: 'text.type'".
+    if (text) body.text = { format: text };
     return body;
 }
 

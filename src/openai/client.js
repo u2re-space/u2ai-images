@@ -191,6 +191,24 @@ export function resolveBackends(config, { kind = 'text', model = null, env = pro
 }
 
 /**
+ * The refusal that a gateway put into the body of a 200 answer.
+ *
+ * Some gateways answer 200 with an `error` object instead of the answer they were asked for: the
+ * refusal has to be read before the answer is treated as a picture or as a text. Such an answer
+ * is a refusal of the host, not of the route — the rotation goes on to the next host.
+ * @param {unknown} answer
+ * @param {string} kind the kind of the route: 'text' or 'images'
+ * @returns {ApiError|null}
+ * @ai.hint pure
+ */
+export function embeddedRefusal(answer, kind = 'text') {
+    if (!isRecord(answer)) return null;
+    if (kind === 'images') return imageErrorFromResult(answer);
+    if (answer.error == null && answer.status !== 'failed') return null;
+    return responsesError(answer, 'responses');
+}
+
+/**
  * The error of an Images API answer that carries a refusal in the body.
  *
  * Some gateways answer 200 with an `error` object instead of a picture; the refusal has to be
@@ -378,7 +396,7 @@ export async function createClient({ config, env = process.env, signal = null, o
 
     // The batch route is two-phase: the requests go out in one run and the answers come in
     // another. The journal is what the two phases share.
-    const batchMode = batch?.mode === 'submit' || batch?.mode === 'fetch';
+    const batchMode = batch?.mode === 'submit' ? 'submit' : (batch?.mode === 'fetch' ? 'fetch' : 'off');
     const journal = batch?.journal ?? null;
     const batchOptions = {
         collectMs: Number.isSafeInteger(batch?.collectMs) ? batch.collectMs : 1500,
@@ -581,6 +599,10 @@ export async function createClient({ config, env = process.env, signal = null, o
                 const answer = await callBackend(backend, path, {
                     method, body, rawBody, contentType, signal: callSignal, model,
                 });
+                // A gateway may answer 200 with a refusal in the body: that is a refusal of this
+                // host, and the rotation goes on to the next one.
+                const refusal = embeddedRefusal(answer, kind);
+                if (refusal) throw refusal;
                 // The host that answered is asked first from now on.
                 pool.promote(backend);
                 return answer;
@@ -592,6 +614,7 @@ export async function createClient({ config, env = process.env, signal = null, o
                     backend: backend.baseURL,
                     kind: failure.kind,
                     status: failure.status,
+                    code: error?.code ?? null,
                     message: failure.message,
                 });
                 announce({
@@ -1093,7 +1116,10 @@ export async function createClient({ config, env = process.env, signal = null, o
                     return cached.value;
                 }
             }
-            if (batchMode && batchable && !noBatch && index === 0) {
+            // The queue of the batch is only used in the first phase: the second phase takes the
+            // answers of the submitted batches out of the journal, and a request that is not
+            // there goes the usual way — a second batch would only cost more.
+            if (batchMode === 'submit' && batchable && !noBatch && index === 0) {
                 return await ensureBatcher().add({
                     customId: hash ?? null,
                     model: candidate,
@@ -1305,9 +1331,21 @@ export async function createClient({ config, env = process.env, signal = null, o
                 // of the canvas, and the empty space is padding that is cut off afterwards.
                 let text = String(prompt ?? '');
                 if (padding) {
+                    const zone = `${padding.originalWidth}x${padding.originalHeight}`;
                     text += `\n\nKeep the source artwork at its original scale and position in the top-left corner `
-                        + `(${padding.originalWidth}x${padding.originalHeight} of a ${padding.width}x${padding.height} canvas); `
-                        + 'do not upscale, stretch, or recenter it. The empty area is padding and will be cropped away.';
+                        + `(${zone} of a ${padding.width}x${padding.height} canvas); `
+                        + 'do not upscale, stretch, or recenter it. '
+                        + `Keep the content at its own size of ${zone} pixels: do not enlarge it to fill the canvas. `
+                        + 'The empty area is padding and will be cropped away.';
+                    // A cut-out of a padded source names the zone the object is in: without it the
+                    // model takes the whole canvas for the subject and keeps the background of
+                    // the picture inside the zone.
+                    if (background === 'transparent') {
+                        text += `\n\nCut out the object that is in the content zone of the canvas `
+                            + `(${zone} in the top-left corner): the background around that object inside the zone `
+                            + 'is background too and has to be transparent as well. '
+                            + 'The empty canvas outside the zone is padding, not the background of the picture.';
+                    }
                 }
 
                 const attempts = vector ? [] : imageSizeAttempts(frame, usedModel, resolution);
@@ -1421,7 +1459,7 @@ export async function createClient({ config, env = process.env, signal = null, o
             /** The mode of this client: `off`, `submit` or `fetch`. */
             mode: batch?.mode ?? 'off',
             /** Is the batch route in use at all? */
-            enabled: batchMode,
+            enabled: batchMode !== 'off',
             /** The hosts that serve the batch route. */
             hosts: () => batchHosts().map((backend) => backend.baseURL),
             /** The second phase: take the answers of the submitted batches into the journal. */

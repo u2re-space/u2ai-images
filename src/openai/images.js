@@ -259,16 +259,19 @@ export function resolveImageFormat({ model, format = null }) {
 
 /**
  * OpenAI gpt-image models accept `background: transparent`; gpt-image-2 is the exception and
- * rejects the field, so it is treated as an opaque-only model. Recraft and most other vendors
- * render an opaque background. The caller uses this to decide whether native alpha is possible
- * or a local background removal is needed.
+ * rejects the field, so it is treated as an opaque-only model. The seedream of ByteDance carries
+ * transparency natively as well, and so does the riverflow of Sourceful. Recraft and most other
+ * vendors render an opaque background. The caller uses this to decide whether native alpha is
+ * possible or a local background removal is needed.
  * @param {string|null|undefined} model
  * @returns {boolean}
  */
 export function supportsTransparentBackground(model) {
-    const version = /^(?:openai\/)?gpt-image-(\d+(?:\.\d+)?)/i.exec(String(model ?? '').trim())?.[1];
-    return (Boolean(version) && version !== '2')
-        || /riverflow-v2\.6-pro$/i.test(String(model ?? '').trim());
+    const name = String(model ?? '').trim();
+    const version = /^(?:openai\/)?gpt-image-(\d+(?:\.\d+)?)/i.exec(name)?.[1];
+    if (Boolean(version) && version !== '2') return true;
+    if (/riverflow-v2\.6-pro$/i.test(name)) return true;
+    return /seedream/i.test(name);
 }
 
 /**

@@ -68,6 +68,12 @@ Batch options:
                         the batch is not ready yet).
                         Only the hosts with "supports": { "batch": true } take part in it.
 
+Background removal:
+  The cut-out is asked of openai/gpt-image-2.6-sunburst and bytedance-seed/seedream-5-5: both
+  carry an alpha channel natively, so the picture is asked for a transparent background and the
+  alpha of the answer is the answer. The mode auto takes the native alpha of the picture first,
+  then asks the model, and falls back to the local contour.
+
 Generation options:
   -m, --model <name>    Model override.
       --image-model <name>  Image model override.
@@ -93,6 +99,8 @@ Local options:
       --rows <n> --cols <n>  Grid of the split.
       --mode <name>     Mode of the command (fit, compare, alpha).
       --alpha-mode <name>  Alpha mode: auto | mask | contour | flat | key | off.
+                           The mode mask asks the model to cut the subject out; the mode auto
+                           takes the native alpha of the picture first.
       --layout <name>   Layout of the comparison: row | column | grid.
       --frame <shape>   Frame of the comparison: 16:9, 2.39:1, 800x600.
       --gap <n>         The gap between the cells of the comparison.

@@ -58,6 +58,7 @@ export async function run(ctx) {
             config,
             file: output,
             signal: null,
+            model: options.imageModel ?? null,
             alphaMode: mode,
         });
         if (!result.changed && result.reason !== 'already') {

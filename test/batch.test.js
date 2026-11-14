@@ -15,6 +15,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 
 import { createJournal } from '../src/openai/journal.js';
 import { createClient } from '../src/openai/client.js';
+import { parseBatchResults } from '../src/openai/batch.js';
 
 /** A 1x1 PNG, enough for the readers of the answers. */
 const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -177,6 +178,43 @@ test('the second phase takes the answers and the run goes on with them', async (
         await host.close();
         await rm(dir, { recursive: true, force: true });
     }
+});
+
+test('a request that failed in the batch is named by the file of the errors', () => {
+    const results = parseBatchResults(`${JSON.stringify({
+        custom_id: 'req-1',
+        response: {
+            status_code: 400,
+            body: { error: { message: "Unknown parameter: 'text.type'." } },
+        },
+        error: null,
+    })}\n`);
+    const answer = results.get('req-1');
+    assert.equal(answer.ok, false);
+    assert.match(answer.error, /text\.type/);
+});
+
+test('a batch without a file of answers reads the file of the errors', async () => {
+    const { fetchBatch } = await import('../src/openai/batch.js');
+    const channel = {
+        call: async (path) => {
+            if (path === 'batches/batch-1') {
+                return { id: 'batch-1', status: 'completed', output_file_id: null, error_file_id: 'err-1' };
+            }
+            if (path === 'files/err-1/content') {
+                return `${JSON.stringify({
+                    custom_id: 'req-1',
+                    response: { status_code: 400, body: { error: { message: 'the model is not known' } } },
+                })}\n`;
+            }
+            throw new Error(`unexpected path ${path}`);
+        },
+    };
+    const result = await fetchBatch({ channel, id: 'batch-1', pollMs: 50 });
+    assert.equal(result.ready, true);
+    const answer = result.results.get('req-1');
+    assert.equal(answer.ok, false);
+    assert.match(answer.error, /not known/);
 });
 
 test('a picture is kept in the journal and is not paid for twice', async () => {

@@ -47,14 +47,15 @@ export const defaults = {
      */
     backends: [
         { baseURL: 'https://routerai.ru/api/v1', env: 'ROUTERAI_API_KEY' },
-        { baseURL: 'https://api.proxyapi.ru/v1', env: 'PROXYAPI_API_KEY' },
+        // The host of the batch route: the requests of a round go out as one file.
+        { baseURL: 'https://api.proxyapi.ru/v1', env: 'PROXYAPI_API_KEY', supports: { batch: true } },
         { baseURL: 'https://sprutdock.ru/v1', env: 'SPRUTDOCK_API_KEY' },
         { baseURL: 'https://gptunnel.ru/v1', env: 'GPTUNNEL_API_KEY' },
     ],
     /** Ordered hosts of the picture API (the same entry shape). */
     imagesBackends: [
-        { baseURL: 'https://api.proxyapi.ru/v1', env: 'PROXYAPI_API_KEY' },
         { baseURL: 'https://routerai.ru/api/v1', env: 'ROUTERAI_API_KEY' },
+        { baseURL: 'https://api.proxyapi.ru/v1', env: 'PROXYAPI_API_KEY' },
         { baseURL: 'https://sprutdock.ru/v1', env: 'SPRUTDOCK_API_KEY' },
         { baseURL: 'https://gptunnel.ru/v1', env: 'GPTUNNEL_API_KEY' },
     ],
@@ -119,8 +120,6 @@ export const defaults = {
         sizeHint: 'auto',
         /** How the alpha channel is built. */
         alphaMode: 'auto',
-        /** Fill the background with the color of the subject before the matte is drawn. */
-        paintBackground: true,
         /** Anti-aliasing on the edge of the matte, in pixels. */
         alphaFeather: 1,
         /** Raster engine of the local operations. */

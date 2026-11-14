@@ -78,6 +78,9 @@ ai-image edit logo.png "make the background transparent" --reference mockup.png
 # a cut-out with a real alpha channel
 ai-image background product.png --out product-cut.png --alpha-mode mask
 
+# a cut-out of the second model of the list
+ai-image background product.png --out product-cut.png --image-model bytedance-seed/seedream-5-5
+
 # local work, no network
 ai-image crop photo.png --x 10 --y 20 --width 640 --height 480 --out cut.png
 ai-image trim photo.png --transparent-only --out tight.png
@@ -164,6 +167,10 @@ edit are the only ones it holds — everything else stays on the defaults.
 The precedence is: defaults → `~/.ai-image/config.json` → `--config <file>` → `AI_IMAGE_*`
 environment → the flags of the command.
 
+The defaults hold four hosts: `routerai` is asked first for a single request, `proxyapi`
+serves the batch route (it carries the flag `supports: { batch: true }`), and `sprutdock`
+and `gptunnel` follow as the spare hands of the rotation.
+
 The home directory holds:
 
 ```
@@ -199,7 +206,7 @@ the picture model.
 The messages of the configuration validator are in Russian, as in the sibling package
 `@u2ai/decomposer`; every other message of the CLI is in English.
 
-## Providers
+## The providers
 
 The package speaks the OpenAI-compatible API: `/images/generations`, `/images/edits`
 (multipart) and, when a host has no images route, the `image_generation` tool of the
@@ -215,9 +222,28 @@ Responses API as a fallback.
   actually configured.
 
 The built-in purpose map uses `openai/gpt-image-2.6-sunburst` and
-`sourceful/riverflow-v2.6-pro`. The `seedream-5-5` route of the monolith is **not** ported:
-its asynchronous task API lives elsewhere. A user who serves it can add it back through
-`purpose.models.<purpose>`.
+`sourceful/riverflow-v2.6-pro`. The cut-out has its own short list: `seedream-5-5` is asked
+for a background removal only, through the OpenAI-compatible route of the gateway — its
+asynchronous task API of the monolith is not ported.
+
+### The cut-out
+
+`background` and `alpha` do not draw a matte and do not paint the background: the models
+that serve a cut-out carry an alpha channel natively, so the picture is asked for a
+transparent background and the alpha of the answer is the answer.
+
+| Model | Role |
+|---|---|
+| `openai/gpt-image-2.6-sunburst` | The first one that is asked. |
+| `bytedance-seed/seedream-5-5` | The second one: it goes first when the caller names it. |
+
+The answer is judged before it is accepted: a picture without a real alpha, or one that
+leaves a wide halo around the edge, is not a cut-out — the next model of the list is asked.
+A cut-out of a padded source names the zone of the content in the prompt, so the model cuts
+the object out of the picture and does not take the empty canvas for the background.
+
+A user who wants a technical override names it: `image.maskModel` (`self` means the model
+that drew the picture) takes the place of the list.
 
 ### The rotation over the backends
 
@@ -256,9 +282,12 @@ ai-image process "cut the background of logo.png" --batch-fetch  # takes the ans
   goes on with them. While the batch is not ready the exit code is **3**.
 - The journal (`.ai-image/batch` by default) is what the two phases share: the answer of a
   request is found by the hash of the request, so nothing is paid for twice.
-- Only the hosts that carry the flag `"supports": { "batch": true }` take part in it.
+- Only the hosts that carry the flag `"supports": { "batch": true }` take part in it. The
+  default host of the batch route is `proxyapi`.
 - The pictures are not part of a batch, but their payloads are kept in the journal too: the
   second phase does not draw them again.
+- A batch whose requests failed keeps the reasons in the file of the errors of the host, and
+  the run says which request failed and why.
 
 ## The local raster layer
 
@@ -271,8 +300,9 @@ with `--engine auto|sharp|canvas|magick` or `image.rasterEngine`.
 - ImageMagick is the last resort; it is the only engine that counts the palette colors, so
   the vectorizer uses it when it is there.
 
-Alpha modes: `auto` (native alpha → `mask` → `contour` → `flat` → `key`), `mask`, `contour`,
-`flat`, `key`, `off`. A forced mode runs only its own step.
+Alpha modes: `auto` (native alpha → the model cuts the subject out → `contour` → `flat` →
+`key`), `mask` (the model cuts the subject out, nothing else), `contour`, `flat`, `key`,
+`off`. A forced mode runs only its own step.
 
 The frames of a request are made in three ways: `direct` (the frame as it is), `align` (the
 canvas is padded, the content keeps its scale and its position, and the padding is cut off

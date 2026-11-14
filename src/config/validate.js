@@ -189,7 +189,6 @@ export function validateConfig(config) {
     if (!ENUMS.padToMinModes.includes(c.image.padToMin)) fail(`image.padToMin: ${ENUMS.padToMinModes.join(' | ')}`);
     if (!ENUMS.sizeHintModes.includes(c.image.sizeHint)) fail(`image.sizeHint: ${ENUMS.sizeHintModes.join(' | ')}`);
     if (!ENUMS.alphaModes.includes(c.image.alphaMode)) fail(`image.alphaMode: ${ENUMS.alphaModes.join(' | ')}`);
-    if (typeof c.image.paintBackground !== 'boolean') fail('image.paintBackground: true | false');
     if (!(Number.isFinite(c.image.alphaFeather) && c.image.alphaFeather >= 0 && c.image.alphaFeather <= 20)) {
         fail('image.alphaFeather: число 0..20');
     }

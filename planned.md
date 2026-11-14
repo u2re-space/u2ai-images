@@ -1,6 +1,6 @@
 # План перехода: Universal-AI (монолит 0.2.xx) → @u2ai/images (0.3.xx)
 
-> Актуальный статус: **шаги 1–17 завершены** (коммиты `step-1` … `step-17`).
+> Актуальный статус: **шаги 1–18 завершены** (коммиты `step-1` … `step-18`).
 > Рабочий дом переносимого кода: `submodules/u2ai-images/`.
 > Репозиторий: <https://github.com/u2re-space/u2ai-images> (remote настроен, пуш не делаем).
 >
@@ -145,7 +145,7 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
       `prefix`, `vendor`, `supports: {responses, chat, images}`),
       `fallback: { enabled, models: { "<model>": [...] , "*": [...] } }`,
       `image: { size, complexity, format, background, resolution, outputDir, transport,
-      div16, padToMin, sizeHint, alphaMode, paintBackground, alphaFeather,
+      div16, padToMin, sizeHint, alphaMode, alphaFeather,
       rasterEngine, maskModel, pngMaxBytes, vectorMaxColors, autoVectorize,
       parser: { enabled, model, archive, archiveDir } }`,
       `purpose: { models: { decompose: [...], generate: [...], edit: [...], remove_background: [...], upscale: [...], unrotate: [...] } }`,
@@ -447,12 +447,13 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
       `maskPassModel`, `askModel`, `applyGeneratedAlphaMask`, `isRaster`,
       `alphaFormatWarning`.
 - [x] Порядок режимов (`image.alphaMode`):
-      `auto` → нативная альфа → `mask` (модель рисует маску) → `contour` → `flat`
+      `auto` → нативная альфа → модель вырезает объект сама → `contour` → `flat`
       (заливка от углов) → `key` (цвет с рамки);
       `mask`/`contour`/`flat`/`key` — принудительный режим (работает только свой шаг);
       `off` — без альфы.
-- [x] `image.paintBackground` — перед построением маски фон заливается цветом
-      объекта (убивает ореол); `image.alphaFeather` — сглаживание края маски.
+- [x] Нативная альфа моделей вместо маски (шаг 18): `mask` — это модель вырезает объект
+      сама (`CUTOUT_PROMPT`, прозрачный фон), без paint-pass и matte-pass;
+      `image.alphaFeather` — сглаживание края локальной маски.
 - [x] `image.maskModel` — модель, которой оплачивается техническая работа по альфе
       (`null` → семейство по умолчанию, `self` → та же, что нарисовала картинку).
 - [x] Прозрачность требует формата, который её хранит: JPEG альфу не несёт —
@@ -705,11 +706,49 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
 - [x] `test/batch.test.js`: журнал, первая фаза (submit) останавливает прогон, вторая фаза
       (fetch) берёт ответы и продолжает, картинка не оплачивается дважды.
 
-## 18. Проверка убирания фона на живых ключах
+## 18. Нативная альфа и живая проверка на ключах
 
-- [ ] Прогон `ai-image background` на примере из `examples/inputs/` с ключами из окружения.
-- [ ] Разбор результата: какой host ответил, каким маршрутом, что делает альфа-канал.
-- [ ] Починка найденного и повторный прогон.
+- [x] Убраны изощения: `ALPHA_MASK_PROMPT`, `BACKGROUND_PAINT_PROMPT`, paint-pass и
+      matte-pass, `image.paintBackground` (default/validate). Модели `gpt-image-2.6-sunburst`
+      и `seedream-5-5` умеют альфу нативно — картинка спрашивается с прозрачным фоном, и
+      альфа ответа и есть ответ.
+- [x] `alphaModels({config, model})`: явный `image.maskModel` — как есть (`self` → модель,
+      нарисовавшая картинку); иначе цепочка только из `MATTE_MODELS` (`sunburst`,
+      `seedream-5-5`), явная модель — первой, если она в списке.
+- [x] `supportsTransparentBackground` дополнен seedream: без `background: transparent` он
+      отдавал непрозрачную картинку.
+- [x] Ответ модели судится гейтом `judgeAlphaShares` (cleared ≥ 0.03, soft ≤ 0.05): ответ не
+      вырезка — спрашивается следующая модель цепочки.
+- [x] Промпт клиента при padding'е называет размер контента и зону контента: «Keep the
+      content at its own size of WxH pixels: do not enlarge it to fill the canvas» и «Cut out
+      the object that is in the content zone of the canvas …». Без зоны seedream считал
+      субъектом весь исходный квадрат в углу и отдавал непрозрачную картинку.
+- [x] `isImageSizeError` смотрит агрегат попыток (`details.attempts[].code`,
+      `details.sizes`), а не последнюю ошибку.
+- [x] Отказ в теле 200-ответа (`error`) — отказ host'а, ротация продолжается; policy-отказ
+      («prohibited … Terms Of Service») → `FAILURE.MODEL`.
+- [x] Живые прогоны (routerai): `01` → cleared 0.226–0.234, soft 0.018–0.019; `03` →
+      cleared 0.662, soft 0.022; `04` → cleared 0.166, soft 0.025; seedream отклонён гейтом,
+      fallback на sunburst → cleared 0.247, soft 0.020. Визуально край чистый, ореола нет.
+
+## 19. Batch-маршрут на живом ключе
+
+- [x] `BATCH_SUBMITTED` больше не глотается планировщиком и корректором: `isBatchStop`
+      (`src/openai/batch.js`) поднимает ошибку из роли, и прогон останавливается.
+- [x] В фазе fetch запросы не собираются в новый batch — они берутся из журнала, а
+      отсутствующие идут обычным путём.
+- [x] Попутно исправлено: строгий запрос роли уходил в неверной форме (`text.type` вместо
+      `text.format`) — proxyapi отвечал «Unknown parameter: 'text.type'», и роли молча
+      падали на дефолтную стратегию.
+- [x] Batch без файла ответов читает файл ошибок host'а; ответ с кодом ≥ 400 читается как
+      отказ, а не как успех.
+- [x] Живой прогон через proxyapi: submit → код 2 → fetch (не готово) → код 3 → fetch
+      (готово) → стратегия взята из журнала, картинка сделана, код 0.
+- [x] README (EN) и `src/help.js` (EN): нативная альфа, модели вырезки, дефолты
+      routerai/proxyapi, коды 2 и 3.
+- [x] Тесты: выбор моделей вырезки, переход к следующей модели, отказ в теле 200, зонная
+      подсказка в промпте, `text.format`, ошибка batch'а не глотается ролью, файл ошибок
+      batch'а.
 
 ---
 

@@ -155,6 +155,7 @@ vite.config.ts.timestamp-*
 ai-image-*.png
 ai-image-*.jpg
 ai-image-*.webp
+.ai-image/
 
 #
 .env

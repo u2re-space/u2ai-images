@@ -5,33 +5,34 @@
  *          the object keeps an anti-aliased transition instead of a halo.
  * @depends node:path, node:fs/promises, image/raster, openai/images, model/profiles
  * @usedBy commands/alpha, commands/background, commands/generate, commands/edit
- * @exports ALPHA_MASK_PROMPT, BACKGROUND_PAINT_PROMPT, ALPHA_MODES, MIN_CLEARED_SHARE,
- *          MAX_SOFT_SHARE, MIN_SOFT_PIXELS, hasRealAlpha, localKeyAlpha, localMatte,
- *          flatAlphaFallback, isFakePlate, judgeAlphaShares, clearedShare, softShare, frameFor,
- *          maskPassModel, askModel, isRaster, applyGeneratedAlphaMask, alphaFormatWarning
+ * @exports CUTOUT_PROMPT, ALPHA_MODES, MATTE_MODELS,
+ *          MIN_CLEARED_SHARE, MAX_SOFT_SHARE, MIN_SOFT_PIXELS, hasRealAlpha, localKeyAlpha,
+ *          localMatte, flatAlphaFallback, isFakePlate, judgeAlphaShares, clearedShare, softShare,
+ *          frameFor, maskPassModel, alphaModels, askModel, isRaster, applyGeneratedAlphaMask,
+ *          alphaFormatWarning
  * @ai.tags images, alpha, background, matte
  * @ai.hint io
  * @ai.hint legacy-0.2
  *
  * The pipeline, in order:
  * 1. The picture already carries a real alpha channel — keep it.
- * 2. The model draws the matte (the geometry of the object) and, before that, paints the
- *    background with the color of the subject: over a white or a checkerboard plate the
- *    semi-transparent pixels of the edge keep the plate color and read as a halo, over the color
- *    of the subject they disappear.
+ * 2. The model cuts the subject out itself: the models of the cut-out carry transparency
+ *    natively, so the picture is asked with a transparent background and the alpha of the answer
+ *    is the answer.
  * 3. The local contour matte, when the model is not there or refused.
  * 4. The fill from the corners, then the key by the color of the border.
- *
- * The matte is always drawn from the clean source, never from the painted picture: the paint pass
- * may have moved or repainted the edge, and a matte taken from it would not match the artwork.
  */
 
 import path from 'node:path';
-import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { readFile, unlink, writeFile, copyFile } from 'node:fs/promises';
 import { sniffImage } from '../openai/images.js';
 import { imageModelProfile } from '../model/profiles.js';
+import { purposeModels } from '../model/purpose.js';
+import { isModelUnknown } from '../openai/fallback.js';
 import { IMAGE_SIZES } from './sizing.js';
 import {
+    decodeRgba,
+    encodeRgba,
     rasterAlphaShare,
     rasterAlphaSoftShare,
     rasterApplyAlphaMask,
@@ -44,34 +45,31 @@ import {
 } from './raster.js';
 
 /**
- * The prompt of the matte pass: a grayscale matte, not a transparent picture.
+ * The prompt of the cut-out: the model takes the subject out itself.
  *
- * Most vendors cannot emit alpha and paint a checkerboard or a flat plate instead, and a matte
- * converts cleanly into a real alpha channel. The transition must be one or two pixels wide: a
- * wide soft gradient makes the rim milky and eats into the artwork.
+ * The models of the cut-out carry transparency natively, so nothing has to be painted and no
+ * matte has to be drawn: the picture is asked for its subject on a transparent background, and
+ * the alpha that comes back is the answer.
  */
-export const ALPHA_MASK_PROMPT = 'Return an A-mask (matte) for the attached image that will be composited onto an RGB background to produce the final RGBA image. '
-    + 'This is the alpha channel of a two-part composition: RGB + A-mask = RGBA. '
-    + 'White (255) marks the subject that must stay visible — the artwork, logo, product, or person. '
-    + 'Black (0) marks everything that must become transparent, including any checkerboard, grid, or flat plate that only imitates transparency. '
-    + 'Keep the exact framing and proportions of the source. '
-    + 'Edges must be anti-aliased: a one- or two-pixel gray transition exactly on the silhouette, not a wide soft glow, and the interior of the subject pure white. '
-    + 'The mask must trace the subject contour tightly: a one- or two-pixel gray transition exactly on the silhouette creates a clean anti-aliased edge in the final composite. '
-    + 'Do not widen the transition into a soft glow — that makes the rim milky and eats into the artwork. Do not make alpha edges too blurry! '
-    + 'The interior of the subject must be pure white; the transparent area must be pure black. '
-    + 'Output the matte/mask only: grayscale, no colors, no text, no border, no shadow.';
-
-/**
- * The prompt of the paint pass: the background takes the dominant color of the subject.
- */
-export const BACKGROUND_PAINT_PROMPT = 'You are creating the RGB channel for a two-part RGBA composition (RGB + A-mask = RGBA). '
-    + 'Fill the whole background of the attached image with the dominant color of the subject. '
-    + 'Do not change the subject: keep every pixel of it identical, in the same position, with the same proportions and framing. '
-    + 'Paint a single flat color only where the background is now — including any checkerboard, grid, or pattern that imitates transparency. '
-    + 'This flat color will serve as the RGB base that the A-mask composites over: no gradients, no texture, no shadow, no new objects.';
+export const CUTOUT_PROMPT = 'Cut the subject out of the attached picture: keep the subject, its colors, its details, '
+    + 'its proportions and its position exactly as they are, and make everything around it fully transparent. '
+    + 'Do not crop, move, resize or repaint the subject, do not add anything, and keep the frame of the picture.';
 
 /** The modes of the alpha pipeline. */
 export const ALPHA_MODES = Object.freeze(['auto', 'mask', 'contour', 'flat', 'key', 'off']);
+
+/**
+ * The models that draw a matte.
+ *
+ * A cut-out is a technical task, and only two of the picture models do it well: the sunburst of
+ * OpenAI and the seedream of ByteDance. The other models answer with a picture of a picture, and
+ * the matte that comes out of it is a wide glow instead of an edge — so they are never asked for
+ * a matte.
+ */
+export const MATTE_MODELS = Object.freeze([
+    'openai/gpt-image-2.6-sunburst',
+    'bytedance-seed/seedream-5-5',
+]);
 
 /**
  * The share of the frame that has to be cleared before the alpha counts as a real cut-out.
@@ -222,6 +220,38 @@ export function maskPassModel({ maskModel = null, model = null, imageModel = nul
 }
 
 /**
+ * The models that draw the matte, in the order they are tried.
+ *
+ * The list is short on purpose: only `gpt-image-2.6-sunburst` and `seedream-5-5` are asked for a
+ * cut-out. A model named by the user is honoured when it is one of them — it goes first, and the
+ * other one is the fallback. `image.maskModel` is the technical override: it is taken as it is,
+ * and `self` means the model that drew the picture.
+ * @param {{ config?: object|null, model?: string|null }} options
+ * @returns {string[]}
+ * @exports
+ * @ai.hint pure
+ */
+export function alphaModels({ config = null, model = null } = {}) {
+    const mask = String(config?.image?.maskModel ?? '').trim();
+    if (mask) {
+        if (SELF_MASK_MODELS.has(mask.toLowerCase())) {
+            const own = String(model ?? config?.imageModel ?? '').trim();
+            return own ? [own] : [];
+        }
+        return [mask];
+    }
+    const chain = [];
+    const own = String(model ?? '').trim();
+    if (own && MATTE_MODELS.includes(own)) chain.push(own);
+    const configured = purposeModels(config, 'remove_background')
+        .filter((name) => MATTE_MODELS.includes(name));
+    for (const name of [...configured, ...MATTE_MODELS]) {
+        if (!chain.includes(name)) chain.push(name);
+    }
+    return chain;
+}
+
+/**
  * Is the reply a picture, rather than a failed pass?
  * @param {{ bytes?: Buffer }|{ error?: Error }|null} reply
  * @returns {boolean}
@@ -234,16 +264,15 @@ export function isRaster(reply) {
 
 /**
  * Send one picture to the technical edit model and return the decoded reply when it is a readable
- * raster. Both the paint pass and the matte pass use this: they are technical requests, so they go
- * to `image.maskModel` (`self` = the model that drew the picture), then to the picture model of
- * the caller.
+ * raster. The cut-out is a technical request, so it goes to `image.maskModel` (`self` = the model
+ * that drew the picture), then to the picture model of the caller.
  * @param {{ client: object, config?: object|null, file: string, prompt: string,
- *   signal?: AbortSignal, model?: string|null }} options
+ *   signal?: AbortSignal, model?: string|null, background?: string|null }} options
  * @returns {Promise<{ bytes: Buffer, ext: string, mime: string, model: string|null }|{ error: Error }|null>}
  * @exports
  * @ai.hint io
  */
-export async function askModel({ client, config = null, file, prompt, signal, model = null }) {
+export async function askModel({ client, config = null, file, prompt, signal, model = null, background = null }) {
     const abs = path.resolve(file);
     const bytes = await readFile(abs).catch(() => null);
     if (!bytes) return null;
@@ -262,6 +291,7 @@ export async function askModel({ client, config = null, file, prompt, signal, mo
             prompt,
             size: frameFor(info, techModel),
             format: 'png',
+            background,
             signal,
             files: [{ filename: path.basename(abs), mime: kind.mime, bytes }],
         });
@@ -380,83 +410,63 @@ export function alphaFormatWarning(file) {
 }
 
 /**
- * The two model passes of the alpha pipeline: the paint pass and the matte pass.
+ * The model pass of the alpha pipeline: the model cuts the subject out itself.
+ *
+ * The models of the cut-out carry transparency natively, so the picture is asked with a
+ * transparent background and the alpha of the answer is the answer — no matte, no painted
+ * background, no second generation. The answer is judged before it is accepted: a picture
+ * without a real alpha, or one that leaves a wide halo around the edge, is not a cut-out.
  * @param {{ client: object, config?: object|null, base: string, abs: string, cwd: string,
- *   signal?: AbortSignal, model?: string|null, paintBackground?: boolean, feather?: number,
- *   engine?: string }} options
- * @returns {Promise<{ applied: boolean, error?: Error, model?: string|null, painted?: boolean,
- *   inverted?: boolean, feathered?: number }>}
+ *   signal?: AbortSignal, model?: string|null, engine?: string, totalPixels?: number }} options
+ * @returns {Promise<{ applied: boolean, error?: Error, model?: string|null, verdict?: object }>}
  * @ai.hint io
  */
-async function modelAlphaPass({
-    client, config, base, abs, cwd, signal, model, paintBackground, feather, engine,
-}) {
-    let paintedPath = null;
-    let error = null;
+async function modelAlphaPass({ client, config, base, abs, cwd, signal, model, engine, totalPixels }) {
+    const answer = await askModel({
+        client, config, file: base, prompt: CUTOUT_PROMPT, signal, model, background: 'transparent',
+    });
+    if (!isRaster(answer)) {
+        return { applied: false, error: answer?.error ?? new Error('The model answered without a picture.') };
+    }
+    // The answer is built aside: a picture that is not a cut-out must not reach the file.
+    const outPath = path.join(cwd, `.tmp-alpha-out-${process.pid}-${Date.now()}.png`);
     try {
-        if (paintBackground) {
-            const painted = await askModel({
-                client, config, file: base, prompt: BACKGROUND_PAINT_PROMPT, signal, model,
-            });
-            if (isRaster(painted)) {
-                paintedPath = path.join(cwd, `.tmp-alpha-painted-${process.pid}-${Date.now()}.png`);
-                await writeFile(paintedPath, painted.bytes);
-            } else {
-                error = painted?.error ?? error;
-            }
-        }
-        // The matte is the geometry of the subject: it is drawn from `base`, never from the painted
-        // picture, whose edge the paint pass may have moved or repainted.
-        const matteBase = paintedPath || base;
-        const matte = await askModel({
-            client, config, file: base, prompt: ALPHA_MASK_PROMPT, signal, model,
-        });
-        if (!isRaster(matte)) return { applied: false, error: matte?.error ?? error };
-        const maskPath = path.join(cwd, `.tmp-alpha-mask-${process.pid}-${Date.now()}.${matte.ext}`);
-        await writeFile(maskPath, matte.bytes);
-        try {
-            const applied = await rasterApplyAlphaMask({
-                input: matteBase, mask: maskPath, output: abs, cwd, signal, feather, engine,
-            });
-            // A fully white matte means the model found nothing to cut: keep the picture as it is
-            // instead of letting the fill eat a corner of the subject.
-            if (applied.reason === 'full-mask') {
-                return { applied: false, error: new Error('The model found nothing to cut out.') };
-            }
-            if (!applied.changed) {
-                return { applied: false, error: new Error(`The matte could not be applied (${applied.reason}).`) };
-            }
+        // The file of the result is a PNG: a host that answered with another format is converted.
+        const bytes = answer.ext === 'png'
+            ? answer.bytes
+            : await encodeRgba(await decodeRgba(answer.bytes, engine), { format: 'png' }, engine);
+        await writeFile(outPath, bytes);
+        const verdict = await judgeAlphaShares({ abs: outPath, cwd, engine, totalPixels });
+        if (!verdict.usable) {
             return {
-                applied: true,
-                model: matte.model,
-                painted: Boolean(paintedPath),
-                inverted: applied.inverted,
-                feathered: applied.feathered,
+                applied: false,
+                error: new Error(`The alpha of the model is not a cut-out (cleared ${verdict.cleared ?? 0}, `
+                    + `soft ${verdict.soft ?? 0}).`),
+                verdict,
             };
-        } finally {
-            await unlink(maskPath).catch(() => {});
         }
+        await copyFile(outPath, abs);
+        return { applied: true, model: answer.model, verdict };
     } finally {
-        if (paintedPath) await unlink(paintedPath).catch(() => {});
+        await unlink(outPath).catch(() => {});
     }
 }
 
 /**
  * Build a real alpha channel for a saved picture.
  *
- * The order of `auto`: a native alpha channel, then the model mask, then the local contour matte,
- * then the fill from the corners, then the key by the color of the border. The forced modes run
- * only their own step; `off` leaves the picture alone.
+ * The order of `auto`: a native alpha channel, then the model that cuts the subject out, then the
+ * local contour matte, then the fill from the corners, then the key by the color of the border.
+ * The forced modes run only their own step; `off` leaves the picture alone.
  *
  * `alphaSource` names the clean RGB base — the reference, the measurement crop, or the file
  * before the upscale — so the alpha is never derived from a picture that already carries a painted
  * transparency plate.
  * @param {{ client?: object|null, config?: object|null, file: string, signal?: AbortSignal,
- *   model?: string|null, alphaSource?: string|null, paintBackground?: boolean, feather?: number,
+ *   model?: string|null, alphaSource?: string|null, feather?: number,
  *   alphaMode?: string }} options
- * @returns {Promise<{ changed: boolean, reason: string, model?: string|null, painted?: boolean,
- *   source?: string|null, softEdge?: boolean, inverted?: boolean, feathered?: number,
- *   error?: Error }>}
+ * @returns {Promise<{ changed: boolean, reason: string, model?: string|null,
+ *   source?: string|null, softEdge?: boolean, error?: Error }>}
  * @exports
  * @ai.hint io
  */
@@ -467,7 +477,6 @@ export async function applyGeneratedAlphaMask({
     signal,
     model = null,
     alphaSource = null,
-    paintBackground = config?.image?.paintBackground !== false,
     feather = config?.image?.alphaFeather ?? 1,
     alphaMode = config?.image?.alphaMode ?? 'auto',
 } = {}) {
@@ -498,30 +507,31 @@ export async function applyGeneratedAlphaMask({
         : abs;
     const merged = {
         model: null,
-        painted: false,
         source: base === abs ? null : path.relative(process.cwd(), base).split(path.sep).join('/'),
         ...(softEdge ? { softEdge: true } : {}),
     };
-    /** Why the model passes did not deliver a matte; reported with the local fallback. */
+    /** Why the model did not deliver a cut-out; reported with the local fallback. */
     let lastError = null;
 
-    // 1. The model: the background takes the color of the subject, the matte comes from the source.
+    // 1. The model cuts the subject out itself: it is asked for a transparent background.
     if ((mode === 'auto' || mode === 'mask') && client?.images) {
-        const result = await modelAlphaPass({
-            client, config, base, abs, cwd, signal, model, paintBackground, feather, engine,
-        });
-        if (result.applied) {
-            return {
-                ...merged,
-                changed: true,
-                reason: 'mask',
-                model: result.model,
-                painted: result.painted,
-                inverted: result.inverted,
-                feathered: result.feathered,
-            };
+        for (const candidate of alphaModels({ config, model })) {
+            const result = await modelAlphaPass({
+                client, config, base, abs, cwd, signal, model: candidate, engine, totalPixels,
+            });
+            if (result.applied) {
+                return {
+                    ...merged,
+                    changed: true,
+                    reason: 'model',
+                    model: result.model,
+                };
+            }
+            lastError = result.error ?? lastError;
+            // The next model is asked when this one is not known to the hosts, or when its answer
+            // is not a cut-out: another model may cut the same subject properly.
+            if (!result.verdict && !isModelUnknown(result.error)) break;
         }
-        lastError = result.error ?? lastError;
         if (mode === 'mask') return { ...merged, changed: false, reason: 'failed', error: lastError };
     }
 

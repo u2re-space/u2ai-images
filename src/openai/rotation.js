@@ -63,6 +63,15 @@ const UNAUTHORIZED = /invalid\s+api\s*key|incorrect\s+api\s*key|unauthorized|aut
 /** The words that turn a refusal into a refusal of the model. */
 const MODEL_MISSING = /not\s+found|does\s+not\s+exist|unknown|unavailable|no\s+such|no\s+model|not\s+supported|не\s+найден/i;
 
+/**
+ * The words of a host that refuses the model by its policy.
+ *
+ * The gateway answers 200 with a refusal in the body: the model is there, but this host will not
+ * serve it. The host is not broken and the model is not unknown to the world — the host simply
+ * does not serve this model, and it is not asked for it again.
+ */
+const MODEL_REFUSED = /prohibited|violation\s+of\s+(?:provider\s+)?terms\s+of\s+service|terms\s+of\s+service|blocked\s+by\s+policy|content\s+policy|not\s+allowed\s+(?:by|under)\s+(?:the\s+)?policy/i;
+
 /** The words of a host that does not serve the route. */
 const ROUTE_MISSING = /not\s+found\s+in\s+this\s+api|no\s+such\s+(?:route|endpoint)|unknown\s+endpoint|unsupported\s+endpoint|does\s+not\s+support\s+(?:images|image)/i;
 
@@ -90,7 +99,8 @@ export function classifyFailure(error) {
     } else if (status === 401 || status === 403 || UNAUTHORIZED.test(message)) {
         kind = FAILURE.UNAUTHORIZED;
     } else if (apiCode === 'model_not_found'
-        || (/\bmodel\b/i.test(message) && MODEL_MISSING.test(message))) {
+        || (/\bmodel\b/i.test(message) && MODEL_MISSING.test(message))
+        || MODEL_REFUSED.test(message)) {
         kind = FAILURE.MODEL;
     } else if (status === 404 || status === 405 || status === 501 || ROUTE_MISSING.test(message)) {
         kind = FAILURE.ROUTE;

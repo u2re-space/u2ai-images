@@ -15,6 +15,7 @@ import path from 'node:path';
 import { createClient } from '../openai/client.js';
 import { createJournal } from '../openai/journal.js';
 import { ApiError } from '../openai/errors.js';
+import { BATCH_NOT_READY } from '../openai/batch.js';
 
 /**
  * An error of the arguments: the command explains itself and the run ends with the code 2.
@@ -194,7 +195,7 @@ export async function createCommandClient({ config, env = process.env, renderer 
             const fetched = await client.batches.fetch();
             if (!fetched.ready) {
                 throw new ApiError('The batch is not ready yet. Run the same command with --batch-fetch '
-                    + 'again later.', { code: 'BATCH_NOT_READY' });
+                    + 'again later.', { code: BATCH_NOT_READY });
             }
         }
     }

@@ -169,6 +169,28 @@ test('a run without a model still has a strategy', async () => {
     assert.ok(result.errors.length);
 });
 
+test('the planner does not swallow the answer of the batch', async () => {
+    const client = {
+        responses: {
+            async create() {
+                const error = new Error('The batch batch-1 was submitted.');
+                error.code = 'BATCH_SUBMITTED';
+                throw error;
+            },
+            text(response) {
+                return response.output_text ?? '';
+            },
+        },
+    };
+    await assert.rejects(
+        async () => await planStrategy({ client, config: cloneDefaults(), task: 'a cat' }),
+        (error) => {
+            assert.equal(error.code, 'BATCH_SUBMITTED');
+            return true;
+        },
+    );
+});
+
 test('the corrector finds the mismatch of a frame', async () => {
     const dir = await tempDir();
     await writeFile(path.join(dir, 'a.png'), await solidPng(40, 20));

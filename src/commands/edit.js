@@ -103,7 +103,7 @@ export async function run(ctx) {
         renderer.plan({ model, size, format, purpose, output: target.target });
     }
 
-    const sourceFile = await readSource({ file: source, cwd, maxBytes });
+    const sourceFile = await readSource({ file: source, cwd, maxBytes: limit });
     const client = await createCommandClient({ config, env, renderer, options, cwd });
     try {
         const answer = await client.images.edit({

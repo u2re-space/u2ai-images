@@ -16,6 +16,7 @@ import { askRole } from '../agent/ask.js';
 import { CORRECTOR_SCHEMA } from '../agent/schemas.js';
 import { rasterInfo, rasterIsOpaque } from '../image/raster.js';
 import { sniffImage } from '../openai/images.js';
+import { isBatchStop } from '../openai/batch.js';
 
 /**
  * The instructions of the corrector.
@@ -155,6 +156,8 @@ export async function judgeResult({
             retry: answer.data.retry ?? null,
         };
     } catch (error) {
+        // The batch route stops the run: the verdict of the corrector is not here yet.
+        if (isBatchStop(error)) throw error;
         return { issues: [], notes: [error?.message ?? String(error)] };
     }
 }

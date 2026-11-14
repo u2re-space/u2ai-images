@@ -13,6 +13,7 @@
 import { askRole } from '../agent/ask.js';
 import { PLANNER_SCHEMA } from '../agent/schemas.js';
 import { canonicalPurpose, PURPOSE_NAMES } from '../model/purpose.js';
+import { isBatchStop } from '../openai/batch.js';
 
 /**
  * The instructions of the planner.
@@ -165,6 +166,9 @@ export async function planStrategy({
             errors: answer.valid ? [] : answer.errors,
         };
     } catch (error) {
+        // The batch route stops the run: the answers of the planner are not here yet, and a run
+        // without a plan would pay for the same work twice.
+        if (isBatchStop(error)) throw error;
         return { strategy: fallback, source: 'default', errors: [error?.message ?? String(error)] };
     }
 }

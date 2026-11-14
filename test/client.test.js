@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 
 import { createClient, planEdit, alignToGrid, buildEditFields, resolveBackends } from '../src/openai/client.js';
+import { buildResponsesBody } from '../src/openai/responses.js';
 import { alignmentPlan } from '../src/image/sizing.js';
 
 const GPT = 'openai/gpt-image-2.6-sunburst';
@@ -243,6 +244,46 @@ test('the plan of an edit: the padding keeps the content and the answer is cropp
         assert.equal(calls[1].originalWidth, 100);
         const request = host.requests.at(-1);
         assert.match(request.body, /Keep the source artwork at its original scale/);
+    } finally {
+        client.close();
+        await host.close();
+    }
+});
+
+test('the strict answer of a role travels under text.format', () => {
+    const body = buildResponsesBody({
+        model: 'test/model',
+        instructions: 'answer with JSON',
+        input: 'a cat',
+        text: { type: 'json_schema', name: 'strategy', strict: true, schema: { type: 'object' } },
+    });
+    assert.ok(body.text.format, 'the format of the answer is under text.format');
+    assert.equal(body.text.format.type, 'json_schema');
+    assert.equal(body.text.format.name, 'strategy');
+    assert.equal(body.text.type, undefined, 'text.type is not a field of the request');
+});
+
+test('the cut-out of a padded source names the zone of the content', async () => {
+    const fakeRaster = {
+        padImageBytes: async ({ bytes, targetWidth, targetHeight }) => ({
+            bytes, width: targetWidth, height: targetHeight,
+            originalWidth: 100, originalHeight: 100, padded: true,
+        }),
+        removeImagePadding: async ({ bytes }) => bytes,
+        fitToFrame: async ({ bytes }) => bytes,
+    };
+    const host = await mockHost(() => ({ json: { data: [{ b64_json: TINY_PNG }] } }));
+    const client = await createClient({ config: configFor(host.baseURL), raster: fakeRaster });
+    try {
+        await client.images.edit({
+            model: GPT,
+            prompt: 'cut the subject out',
+            background: 'transparent',
+            files: [{ filename: 'shot.png', mime: 'image/png', bytes: Buffer.from(TINY_PNG, 'base64') }],
+        });
+        const request = host.requests.at(-1);
+        assert.match(request.body, /content zone of the canvas/);
+        assert.match(request.body, /Keep the content at its own size/);
     } finally {
         client.close();
         await host.close();

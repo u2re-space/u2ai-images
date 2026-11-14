@@ -15,8 +15,9 @@
  *
  * @depends node:timers/promises, openai/errors, openai/images
  * @usedBy openai/client
- * @exports BATCH_ENDPOINT, BATCH_WINDOW, BATCH_SUBMITTED, batchEndpointFor, buildBatchJsonl,
- *          parseBatchResults, submitBatch, fetchBatch, runBatch, createBatcher, batchSubmittedError
+ * @exports BATCH_ENDPOINT, BATCH_WINDOW, BATCH_SUBMITTED, BATCH_NOT_READY, batchEndpointFor,
+ *          buildBatchJsonl, parseBatchResults, submitBatch, fetchBatch, runBatch, createBatcher,
+ *          batchSubmittedError, isBatchStop
  * @ai.tags openai, batch, api
  * @ai.hint io
  */
@@ -32,6 +33,27 @@ export const BATCH_WINDOW = '24h';
 
 /** The code of the error that says: the batch is out, the answers are not here yet. */
 export const BATCH_SUBMITTED = 'BATCH_SUBMITTED';
+
+/** The code of the error that says: the batch is not done yet, come back later. */
+export const BATCH_NOT_READY = 'BATCH_NOT_READY';
+
+/**
+ * Is this error the one that stops a run because of the batch route?
+ *
+ * The batch route is two-phase, and the run does not go on while the answers are not here:
+ * the error of the first phase says that the batch is out, the error of the second phase says
+ * that the host has not finished the work. Both of them have to reach the CLI, which answers
+ * with the exit code 2 or 3 — a role that catches them and carries on would quietly pay for the
+ * same work twice.
+ * @param {unknown} error
+ * @returns {boolean}
+ * @exports
+ * @ai.hint pure
+ */
+export function isBatchStop(error) {
+    const code = error?.code ?? null;
+    return code === BATCH_SUBMITTED || code === BATCH_NOT_READY;
+}
 
 /** How often the state of the batch is asked for. */
 const DEFAULT_POLL_MS = 5000;
@@ -127,6 +149,15 @@ export function parseBatchResults(text) {
         }
         if (row?.response?.body === undefined || row?.response?.body === null) {
             out.set(customId, { ok: false, error: `the answer has no body (status ${status || 'unknown'})` });
+            continue;
+        }
+        // A request that the host refused inside the batch answers with a body of its own:
+        // the file of the errors holds the same lines, and the body is the reason of the refusal.
+        if (status >= 400) {
+            const reason = row.response.body?.error?.message
+                ?? row.response.body?.error?.code
+                ?? `the request failed (status ${status})`;
+            out.set(customId, { ok: false, error: String(reason) });
             continue;
         }
         out.set(customId, { ok: true, body: row.response.body, status });
@@ -290,10 +321,17 @@ export async function fetchBatch({
         if (status === 'completed') {
             const outputFileId = String(answer?.output_file_id ?? '').trim();
             if (!outputFileId) {
-                throw new ApiError('The batch is done, but it has no file of answers.', {
-                    code: 'INVALID_RESPONSE',
-                    details: { id },
-                });
+                // A batch whose requests all failed has no file of answers — the host keeps the
+                // reasons in the file of the errors, and they are the answer of the batch.
+                const errorFileId = String(answer?.error_file_id ?? '').trim();
+                if (!errorFileId) {
+                    throw new ApiError('The batch is done, but it has no file of answers.', {
+                        code: 'INVALID_RESPONSE',
+                        details: { id },
+                    });
+                }
+                const errors = await downloadBatchFile(channel, errorFileId, { signal });
+                return { ready: true, id, status, results: parseBatchResults(errors), raw: answer };
             }
             const text = await downloadBatchFile(channel, outputFileId, { signal });
             return { ready: true, id, status, results: parseBatchResults(text), raw: answer };

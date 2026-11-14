@@ -553,14 +553,22 @@ export function sameAspectImageSize(size, model = null) {
 
 /**
  * Retry only errors that explicitly identify an invalid or unsupported image size.
+ *
+ * The refusal of a whole rotation keeps the answers of every host in `details.attempts`, and the
+ * size may be refused by one host while another one refused something else — the size is then
+ * still the reason to try the next frame.
  * @param {Error & { status?: number, param?: string }} error
  * @returns {boolean}
  */
 export function isImageSizeError(error) {
     if (error?.code === 'IMAGE_SIZE_ERROR') return true;
+    const attempts = error?.details?.attempts;
+    if (Array.isArray(attempts) && attempts.some((item) => item?.code === 'IMAGE_SIZE_ERROR')) {
+        return true;
+    }
     if (![400, 413, 422].includes(error?.status)) return false;
-    if (/^(?:size|image_size|dimensions?)$/i.test(String(error?.param ?? ''))) return true;
-    return /\b(size|dimensions?|resolution|aspect ratio|pixel count)\b/i.test(String(error?.message ?? ''));
+    if (/^(?:size|sizes|image_size|dimensions?)$/i.test(String(error?.param ?? ''))) return true;
+    return /\b(sizes?|dimensions?|resolution|aspect ratio|pixel count)\b/i.test(String(error?.message ?? ''));
 }
 
 /**

@@ -13,6 +13,7 @@ import path from 'node:path';
 
 import {
     alphaFormatWarning,
+    alphaModels,
     applyGeneratedAlphaMask,
     clearedShare,
     frameFor,
@@ -23,6 +24,7 @@ import {
     maskPassModel,
     softShare,
 } from '../src/image/alpha.js';
+import { cloneDefaults } from '../src/config/defaults.js';
 import { decodeRgba, encodeRgba } from '../src/image/raster.js';
 
 /** A temporary directory that cleans itself up. */
@@ -244,4 +246,45 @@ test('the soft share tells a halo from a clean edge', async () => {
     await writeFile(file, await solidPng(64, 64, { r: 10, g: 10, b: 10, a: 128 }));
     const share = await softShare({ abs: file, cwd: dir });
     assert.ok(share > 0.9, `the share is ${share}`);
+});
+
+test('the cut-out is asked of the two models that carry an alpha natively', () => {
+    const config = cloneDefaults();
+    assert.deepEqual(alphaModels({ config }),
+        ['openai/gpt-image-2.6-sunburst', 'bytedance-seed/seedream-5-5']);
+    // The model of the caller goes first when it is one of them.
+    assert.deepEqual(alphaModels({ config, model: 'bytedance-seed/seedream-5-5' }),
+        ['bytedance-seed/seedream-5-5', 'openai/gpt-image-2.6-sunburst']);
+    // A model that cannot cut out is not asked for a cut-out.
+    assert.deepEqual(alphaModels({ config, model: 'sourceful/riverflow-v2.6-pro' }),
+        ['openai/gpt-image-2.6-sunburst', 'bytedance-seed/seedream-5-5']);
+});
+
+test('the next model is asked when the answer is not a cut-out', async () => {
+    const dir = await tempDir();
+    const file = path.join(dir, 'a.png');
+    await writeFile(file, await solidPng(64, 64, { r: 10, g: 10, b: 10, a: 255 }));
+    const asked = [];
+    const client = {
+        images: {
+            async edit(params) {
+                asked.push(params.model);
+                // The first model answers with a picture that has no transparency at all.
+                return {
+                    model: params.model,
+                    images: [{ bytes: await solidPng(64, 64, { r: 10, g: 10, b: 10, a: 255 }) }],
+                };
+            },
+        },
+    };
+    const result = await applyGeneratedAlphaMask({
+        client,
+        config: cloneDefaults(),
+        file,
+        alphaMode: 'auto',
+    });
+    assert.equal(asked.length, 2, 'the second model was asked');
+    assert.equal(asked[0], 'openai/gpt-image-2.6-sunburst');
+    assert.equal(asked[1], 'bytedance-seed/seedream-5-5');
+    assert.equal(result.changed, true, 'the local fallback finished the work');
 });

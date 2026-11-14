@@ -50,9 +50,10 @@ export function canonicalPurpose(purpose) {
  * The built-in order of models per purpose: the first model that the gateway
  * serves wins.
  *
- * The seedream entry of the monolith is not here: its asynchronous route is
- * not ported. A user who serves it may add it back through
- * `purpose.models.<purpose>` in the configuration.
+ * The cut-out has its own short list: only `gpt-image-2.6-sunburst` and
+ * `seedream-5-5` are asked for a matte. The asynchronous route of the monolith
+ * is not ported — the seedream model is served here through the
+ * OpenAI-compatible route of the gateway.
  */
 export const PURPOSE_MODEL_MAP = Object.freeze({
     decompose: Object.freeze([
@@ -69,7 +70,7 @@ export const PURPOSE_MODEL_MAP = Object.freeze({
     ]),
     remove_background: Object.freeze([
         'openai/gpt-image-2.6-sunburst',
-        'sourceful/riverflow-v2.6-pro',
+        'bytedance-seed/seedream-5-5',
     ]),
     upscale: Object.freeze([
         'openai/gpt-image-2.6-sunburst',
