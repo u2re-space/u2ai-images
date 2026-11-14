@@ -136,7 +136,7 @@ edit are the only ones it holds — everything else stays on the defaults.
   "vectorModel": null,
   "backends": [
     { "baseURL": "https://routerai.ru/api/v1", "env": "ROUTERAI_API_KEY" },
-    { "baseURL": "https://api.proxyapi.ru/v1", "env": "PROXYAPI_API_KEY" }
+    { "baseURL": "https://api.proxyapi.ru/v1", "env": "PROXYAPI_API_KEY", "supports": { "batch": true } }
   ],
   "imagesBackends": [
     { "baseURL": "https://api.proxyapi.ru/v1", "env": "PROXYAPI_API_KEY" }
@@ -153,6 +153,10 @@ edit are the only ones it holds — everything else stays on the defaults.
       "generate": ["openai/gpt-image-2.6-sunburst"],
       "edit": ["openai/gpt-image-2.6-sunburst"]
     }
+  },
+  "batch": {
+    "enabled": false,
+    "journalDir": ".ai-image/batch"
   }
 }
 ```
@@ -215,6 +219,47 @@ The built-in purpose map uses `openai/gpt-image-2.6-sunburst` and
 its asynchronous task API lives elsewhere. A user who serves it can add it back through
 `purpose.models.<purpose>`.
 
+### The rotation over the backends
+
+The pool of the hosts remembers what every host said, so the same refusal is not paid for
+twice:
+
+| What the host said | What the pool remembers |
+|---|---|
+| `402`, "Insufficient balance" | the host is out of money — it is not asked again |
+| `401`/`403`, "Invalid API key" | the host does not accept the key — it is not asked again |
+| "model not found" | the host does not know that model — it is not asked that model again |
+| "not found in this api" | the host does not serve that route — the request goes another way |
+| `429`, `5xx` | the host is busy or broken — the request is retried and then goes on |
+
+The host that answered is moved to the front of the pool: the one that works is asked first
+from then on. When every host refuses, the run fails with one error that carries the reason
+of every attempt (`ALL_BACKENDS_FAILED`), and the decision about the next model or the next
+route is made by all the attempts, not by the last one.
+
+## The batch route
+
+Some hosts serve the OpenAI batch API: the requests go out as one file, the host works on
+them in the background (up to a day), and the answers come back in another run. A batch
+costs half the price of the same requests one by one.
+
+The route is two-phase by nature, and the CLI says so:
+
+```bash
+ai-image process "cut the background of logo.png" --batch        # submits, exits with 2
+ai-image process "cut the background of logo.png" --batch-fetch  # takes the answers, goes on
+```
+
+- `--batch` collects the requests of the run, uploads the file of the requests, creates the
+  batch and stops. The exit code is **2**: the answers are not here yet.
+- `--batch-fetch` asks the host how the batch is doing, downloads the file of the answers and
+  goes on with them. While the batch is not ready the exit code is **3**.
+- The journal (`.ai-image/batch` by default) is what the two phases share: the answer of a
+  request is found by the hash of the request, so nothing is paid for twice.
+- Only the hosts that carry the flag `"supports": { "batch": true }` take part in it.
+- The pictures are not part of a batch, but their payloads are kept in the journal too: the
+  second phase does not draw them again.
+
 ## The local raster layer
 
 One language for every engine: a frame is `{ width, height, data }` with raw RGBA. The
@@ -250,7 +295,8 @@ the answer is checked before it is used.
 |---|---|
 | 0 | The run succeeded. |
 | 1 | The run failed: the network, the model, the file. |
-| 2 | The arguments were wrong; nothing was tried. |
+| 2 | The arguments were wrong; nothing was tried. Or the batch was submitted and the answers are not here yet. |
+| 3 | The batch is not ready yet: run the same command with `--batch-fetch` later. |
 | 130 | The run was interrupted. |
 
 ## Library API

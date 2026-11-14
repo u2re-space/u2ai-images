@@ -1,6 +1,6 @@
 # План перехода: Universal-AI (монолит 0.2.xx) → @u2ai/images (0.3.xx)
 
-> Актуальный статус: **шаги 1–14 завершены** (коммиты `step-1` … `step-14`).
+> Актуальный статус: **шаги 1–17 завершены** (коммиты `step-1` … `step-17`).
 > Рабочий дом переносимого кода: `submodules/u2ai-images/`.
 > Репозиторий: <https://github.com/u2re-space/u2ai-images> (remote настроен, пуш не делаем).
 >
@@ -658,6 +658,58 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
         требует провайдера);
       - `planned.md` переведён в статус «шаги 1–14 завершены»;
       - тесты пакета и тесты монолита зелёные.
+
+---
+
+## 15. Fallback по backend'ам: память о hosts
+
+- [x] Новый модуль `src/openai/rotation.js`: классификация отказа (`abort`, `no_credit`,
+      `unauthorized`, `model`, `route`, `rate`, `server`, `request`, `network`, `other`) и
+      пул hosts с памятью (`broke`, `unauthorized`, `models`, `routes`).
+- [x] Порядок классификации зафиксирован: «model not found» — это модель, а не маршрут;
+      «Insufficient balance» — это деньги, а не ключ.
+- [x] Хост, ответивший успехом, поднимается наверх пула: рабочий host спрашивается первым.
+- [x] Хост без денег и без ключа больше не спрашивается; host без модели не спрашивается
+      этой моделью; host без маршрута не спрашивается этим маршрутом.
+- [x] Агрегатная ошибка `ALL_BACKENDS_FAILED` с полным списком попыток (`details.attempts`).
+- [x] `isModelUnknown` / `isRouteUnsupported` смотрят все попытки, а не последнюю ошибку:
+      MODEL требует отсутствия REQUEST, ROUTE — отсутствия MODEL/REQUEST.
+- [x] Fallback `images → responses` передаёт исходник как data URI в `input_image`
+      (раньше `references` вычислялись, но не использовались).
+
+## 16. Batch-маршрут: журнал ответов и две фазы
+
+- [x] Журнал ответов (`src/openai/journal.js`): content-addressed, имя запроса — хеш тела:
+      `answers/<hash>.json`, `answers/<hash>.bin`, `requests/<hash>.json`, `batches/<id>.json`.
+- [x] Транспорт batch (`src/openai/batch.js`): `POST /files` (multipart, `purpose=batch`) →
+      `POST /batches` → `GET /batches/{id}` → `GET /files/{id}/content`; ответы по `custom_id`.
+- [x] Флаг host'а `supports: { batch: true }`; хост без флага в batch не попадает.
+- [x] Две фазы: `--batch` (submit) и `--batch-fetch` (fetch); коды выхода 2 (отправлено)
+      и 3 (ещё не готово).
+- [x] Журнал работает только в batch-режиме: обычный прогон не кэширует, иначе повторная
+      генерация отдавала бы старую картинку.
+- [x] В журнал пишутся и текстовые ответы (`responses.create`), и payload'ы картинок
+      (`images.generate` / `images.edit`): вторая фаза не платит за них снова.
+- [x] ИИ-парсер (`src/openai/parser.js`) помечен `batchable: false`: salvage-скрипт нужен
+      сразу, в этом же прогоне.
+- [x] Попутно исправлено: `createCommandClient` стал асинхронным (команды брали промис
+      вместо клиента), а `callBackend` умеет отдавать тело файла ответов как текст.
+
+## 17. Документация и тесты
+
+- [x] README (EN): раздел про ротацию по backend'ам и раздел про batch-маршрут, коды выхода
+      2 и 3, пример конфига с `supports: { batch: true }` и секцией `batch`.
+- [x] `src/help.js` (EN): флаги `--batch` / `--batch-fetch` и примеры.
+- [x] `test/rotation.test.js`: классификация отказов, память пула, агрегатная ошибка,
+      решение по всем попыткам, host без денег не спрашивается повторно.
+- [x] `test/batch.test.js`: журнал, первая фаза (submit) останавливает прогон, вторая фаза
+      (fetch) берёт ответы и продолжает, картинка не оплачивается дважды.
+
+## 18. Проверка убирания фона на живых ключах
+
+- [ ] Прогон `ai-image background` на примере из `examples/inputs/` с ключами из окружения.
+- [ ] Разбор результата: какой host ответил, каким маршрутом, что делает альфа-канал.
+- [ ] Починка найденного и повторный прогон.
 
 ---
 

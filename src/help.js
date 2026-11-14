@@ -62,6 +62,12 @@ Common options:
   -h, --help            This text.
       --version         The version of the package.
 
+Batch options:
+      --batch           Submit the requests of the run as one batch and stop (exit code 2).
+      --batch-fetch     Take the answers of the submitted batches and go on (exit code 3 while
+                        the batch is not ready yet).
+                        Only the hosts with "supports": { "batch": true } take part in it.
+
 Generation options:
   -m, --model <name>    Model override.
       --image-model <name>  Image model override.
@@ -107,4 +113,6 @@ Examples:
   ai-image compare before.png after.png --mode both --labels
   ai-image info photo.png --json
   ai-image purpose
+  ai-image process "cut the background of logo.png" --batch
+  ai-image process "cut the background of logo.png" --batch-fetch
 `;
