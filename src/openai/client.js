@@ -52,6 +52,7 @@ import {
 import { imageModelProfile } from '../model/profiles.js';
 import { resolvePurposeModel } from '../model/purpose.js';
 import { fallbackChain, isModelUnknown, isRouteUnsupported } from './fallback.js';
+import { aggregateFailure, createBackendPool } from './rotation.js';
 
 /** Statuses worth another try on the same backend. */
 const RETRYABLE_STATUS = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
@@ -346,6 +347,30 @@ export async function createClient({ config, env = process.env, signal = null, o
     const padToMinMode = config?.image?.padToMin ?? 'auto';
 
     /**
+     * The pools of the hosts: one for the text route, one for the picture route.
+     *
+     * The pool remembers what every host said — no money, no key, no route, no model — so the
+     * next request does not pay for the same refusal again. The host that answered is moved to
+     * the front of its pool: the one that works is asked first.
+     * @type {Map<string, object>}
+     */
+    const pools = new Map();
+
+    /**
+     * The pool of one route kind.
+     * @param {'text'|'images'} kind
+     * @returns {object}
+     */
+    function poolFor(kind) {
+        if (!pools.has(kind)) {
+            pools.set(kind, createBackendPool({
+                backends: resolveBackends(config, { kind, env }),
+            }));
+        }
+        return pools.get(kind);
+    }
+
+    /**
      * The local raster adapter: padding, cropping and scaling of the pictures.
      *
      * The client works without it (the local corrections are then skipped and reported), so a
@@ -490,6 +515,10 @@ export async function createClient({ config, env = process.env, signal = null, o
 
     /**
      * Call a route, rotating over the backends of the kind.
+     *
+     * Every host is asked until one of them answers. The refusals are classified and remembered:
+     * a host without money is not asked again, a host that does not know the model is not asked
+     * that model again, and the reason of the whole rotation is the one a person can act on.
      * @param {string} path
      * @param {object} options
      * @returns {Promise<object>}
@@ -497,29 +526,64 @@ export async function createClient({ config, env = process.env, signal = null, o
      */
     async function call(path, {
         method = 'POST', body = null, rawBody = null, contentType = 'application/json',
-        kind = 'text', model = null, signal: callSignal = null, supports = null,
+        kind = 'text', model = null, signal: callSignal = null, supports = null, route = null,
     } = {}) {
-        const chain = resolveBackends(config, { kind, model, env });
-        if (!chain.length) {
-            throw new ApiError('No backend is configured for this request.', { code: 'NO_BACKEND' });
+        const pool = poolFor(kind);
+        const routeName = route ?? supports ?? null;
+        let chain = pool.candidates({ model, route: routeName });
+        if (supports) {
+            const skipped = chain.filter((backend) => backend.supports?.[supports] === false);
+            for (const backend of skipped) {
+                announce({ type: 'request.skip', backend: backend.baseURL, reason: `no ${supports} route` });
+            }
+            chain = chain.filter((backend) => backend.supports?.[supports] !== false);
         }
+        if (!chain.length) {
+            // Every host of this pool is out of the game for this request.
+            const remembered = pool.report().filter((item) => item.broke || item.unauthorized
+                || (model && item.models.includes(model)) || (routeName && item.routes.includes(routeName)));
+            throw new ApiError(
+                `No host of the ${kind} route can serve this request${model ? ` (model ${model})` : ''}.`,
+                { code: 'NO_BACKEND', details: { remembered } },
+            );
+        }
+        const attempts = [];
         let lastError = null;
         for (const backend of chain) {
-            if (supports && backend.supports?.[supports] === false) {
-                announce({ type: 'request.skip', backend: backend.baseURL, reason: `no ${supports} route` });
-                continue;
-            }
             try {
-                return await callBackend(backend, path, {
+                const answer = await callBackend(backend, path, {
                     method, body, rawBody, contentType, signal: callSignal, model,
                 });
+                // The host that answered is asked first from now on.
+                pool.promote(backend);
+                return answer;
             } catch (error) {
-                lastError = error;
-                announce({ type: 'request.error', backend: backend.baseURL, status: error?.status ?? null, error: error.message });
                 if (error?.name === 'AbortError' || error?.code === 'ABORTED') throw error;
+                lastError = error;
+                const failure = pool.note({ backend, model, route: routeName, error });
+                attempts.push({
+                    backend: backend.baseURL,
+                    kind: failure.kind,
+                    status: failure.status,
+                    message: failure.message,
+                });
+                announce({
+                    type: 'request.error',
+                    backend: backend.baseURL,
+                    status: failure.status,
+                    error: failure.message,
+                    kind: failure.kind,
+                });
+                if (failure.kind === 'no_credit') {
+                    announce({
+                        type: 'host.broke',
+                        backend: backend.baseURL,
+                        error: failure.message,
+                    });
+                }
             }
         }
-        throw lastError ?? new ApiError('No backend answered the request.', { code: 'NO_BACKEND' });
+        throw aggregateFailure(attempts, lastError);
     }
 
     /**
@@ -708,21 +772,32 @@ export async function createClient({ config, env = process.env, signal = null, o
     /**
      * The Responses API with the built-in picture tool — the fallback route of a host that does
      * not know `/images/generations`.
+     *
+     * The source pictures of an edit travel with the request as data URIs: a host that has no
+     * edit route still gets the picture it has to change, not only the words about it.
      * @param {{ model: string, prompt: string, size?: string|null, format?: string|null,
-     *   background?: string|null, signal?: AbortSignal|null }} params
+     *   background?: string|null, references?: string[], signal?: AbortSignal|null }} params
      * @returns {Promise<object>}
      * @ai.hint io
      */
-    async function responsesImage({ model, prompt, size = null, format = null, background = null, signal: callSignal = null }) {
+    async function responsesImage({ model, prompt, size = null, format = null, background = null,
+        references = [], signal: callSignal = null }) {
+        const input = references.length
+            ? [
+                { type: 'input_text', text: String(prompt ?? '') },
+                ...references.map((url) => ({ type: 'input_image', image_url: url })),
+            ]
+            : prompt;
         const body = buildResponsesBody({
             model,
-            input: prompt,
+            input,
             tools: [imageGenerationTool({ format, size, background })],
             toolChoice: { type: 'image_generation' },
         });
         announce({ type: 'transport.fallback', reason: 'the host has no images route; the request goes to the Responses API' });
         return await call('responses', {
-            method: 'POST', body, kind: 'text', model, signal: callSignal, supports: 'responses',
+            method: 'POST', body, kind: 'text', model, signal: callSignal,
+            supports: 'responses', route: 'image-generation',
         });
     }
 
@@ -736,18 +811,23 @@ export async function createClient({ config, env = process.env, signal = null, o
         const body = generationBody({
             model, prompt, size, complexity, n, format, background, references, resolution, sizeHint: sizeHintMode,
         });
-        try {
-            const result = await call('images/generations', {
-                method: 'POST', body, kind: 'images', model, signal: callSignal, supports: 'images',
-            });
-            const failure = imageErrorFromResult(result);
-            if (failure) throw failure;
-            return { payloads: await payloadList(result, { route: 'images/generations', model, signal: callSignal }), route: 'images/generations', raw: result };
-        } catch (error) {
-            if (!isRouteUnsupported(error)) throw error;
-            const answer = await responsesImage({ model, prompt, size, format, background, signal: callSignal });
-            return { payloads: await payloadList(answer, { route: 'responses', model, signal: callSignal }), route: 'responses', raw: answer };
+        // A host that was asked before and did not serve the route is not asked again: the
+        // request goes to the Responses API right away.
+        const imageHosts = poolFor('images').candidates({ model, route: 'images' });
+        if (imageHosts.length) {
+            try {
+                const result = await call('images/generations', {
+                    method: 'POST', body, kind: 'images', model, signal: callSignal, supports: 'images',
+                });
+                const failure = imageErrorFromResult(result);
+                if (failure) throw failure;
+                return { payloads: await payloadList(result, { route: 'images/generations', model, signal: callSignal }), route: 'images/generations', raw: result };
+            } catch (error) {
+                if (!isRouteUnsupported(error)) throw error;
+            }
         }
+        const answer = await responsesImage({ model, prompt, size, format, background, signal: callSignal });
+        return { payloads: await payloadList(answer, { route: 'responses', model, signal: callSignal }), route: 'responses', raw: answer };
     }
 
     /**
@@ -758,28 +838,28 @@ export async function createClient({ config, env = process.env, signal = null, o
      */
     async function editOnce({ model, prompt, fields, files, signal: callSignal }) {
         const form = encodeMultipart({ fields, files });
-        try {
-            const result = await call('images/edits', {
-                method: 'POST', rawBody: form.body, contentType: form.contentType,
-                kind: 'images', model, signal: callSignal, supports: 'images',
-            });
-            const failure = imageErrorFromResult(result);
-            if (failure) throw failure;
-            return { payloads: await payloadList(result, { route: 'images/edits', model, signal: callSignal }), route: 'images/edits', raw: result };
-        } catch (error) {
-            if (!isRouteUnsupported(error)) throw error;
-            // A host without the edit route gets the edit as a generation with the source as a
-            // reference: the picture travels as a data URI inside the request.
-            const references = files.map((file) => `data:${file.mime || 'image/png'};base64,${Buffer.from(file.bytes).toString('base64')}`);
-            const answer = await responsesImage({
-                model, prompt, size: fields.size ?? null, format: fields[imageFormatField(model)] ?? null,
-                background: fields.background ?? null, signal: callSignal,
-            });
-            if (!references.length) {
-                return { payloads: await payloadList(answer, { route: 'responses', model, signal: callSignal }), route: 'responses', raw: answer };
+        const imageHosts = poolFor('images').candidates({ model, route: 'images' });
+        if (imageHosts.length) {
+            try {
+                const result = await call('images/edits', {
+                    method: 'POST', rawBody: form.body, contentType: form.contentType,
+                    kind: 'images', model, signal: callSignal, supports: 'images',
+                });
+                const failure = imageErrorFromResult(result);
+                if (failure) throw failure;
+                return { payloads: await payloadList(result, { route: 'images/edits', model, signal: callSignal }), route: 'images/edits', raw: result };
+            } catch (error) {
+                if (!isRouteUnsupported(error)) throw error;
             }
-            return { payloads: await payloadList(answer, { route: 'responses', model, signal: callSignal }), route: 'responses', raw: answer };
         }
+        // A host without the edit route gets the edit as a generation with the source as a
+        // reference: the picture travels as a data URI inside the request.
+        const references = files.map((file) => `data:${file.mime || 'image/png'};base64,${Buffer.from(file.bytes).toString('base64')}`);
+        const answer = await responsesImage({
+            model, prompt, size: fields.size ?? null, format: fields[imageFormatField(model)] ?? null,
+            background: fields.background ?? null, references, signal: callSignal,
+        });
+        return { payloads: await payloadList(answer, { route: 'responses', model, signal: callSignal }), route: 'responses', raw: answer };
     }
 
     const api = {
@@ -788,23 +868,46 @@ export async function createClient({ config, env = process.env, signal = null, o
          */
         responses: {
             /**
+             * The chain of the models of a text request: the asked model first, then its
+             * fallbacks. A host that does not know the model asks for the next one — the same
+             * way the picture route does.
              * @param {{ model?: string|null, instructions?: string|null, input?: unknown, tools?: object[]|null,
              *   toolChoice?: unknown, store?: boolean, text?: object|null, signal?: AbortSignal|null }} params
              * @returns {Promise<object>}
              */
             async create({ model = null, instructions = null, input = null, tools = null, toolChoice = null,
                 store = false, text = null, signal: callSignal = null } = {}) {
-                const body = buildResponsesBody({
-                    model: model ?? config?.model ?? null,
-                    instructions, input, tools, toolChoice, store, text,
-                });
-                const answer = await call('responses', {
-                    method: 'POST', body, kind: 'text', model: body.model,
-                    signal: callSignal, supports: 'responses',
-                });
-                const failure = responsesError(answer, 'responses');
-                if (failure) throw failure;
-                return answer;
+                const wanted = model ?? config?.model ?? null;
+                const chain = modelChain(wanted);
+                let lastError = null;
+                for (const [index, candidate] of chain.entries()) {
+                    const body = buildResponsesBody({
+                        model: candidate,
+                        instructions, input, tools, toolChoice, store, text,
+                    });
+                    try {
+                        const answer = await call('responses', {
+                            method: 'POST', body, kind: 'text', model: candidate,
+                            signal: callSignal, supports: 'responses',
+                        });
+                        const failure = responsesError(answer, 'responses');
+                        if (failure) throw failure;
+                        return answer;
+                    } catch (error) {
+                        if (error?.name === 'AbortError' || error?.code === 'ABORTED') throw error;
+                        lastError = error;
+                        // Only a host that does not know the model asks for the next one.
+                        if (!isModelUnknown(error)) throw error;
+                        const next = chain[index + 1] ?? null;
+                        announce({
+                            type: 'model.fallback',
+                            from: candidate,
+                            to: next,
+                            error: error?.message ?? String(error),
+                        });
+                    }
+                }
+                throw lastError ?? new ApiError('No model answered the request.', { code: 'NO_MODEL' });
             },
             /**
              * The text of an answer of the Responses API.
