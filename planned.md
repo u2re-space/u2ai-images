@@ -772,6 +772,17 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
       вырезка епископа из кропа (`--subject "chess bishop"`) — только seedream, реальная
       альфа (cleared 0.704, soft 0.017), куска доски в пешке нет.
 
+### step-c6 — Копия библиотеки доступа: список файлов и копирование
+- [x] `src/access/native.js` — копия из `u2ai-server`: операция `copy` и состояние пути
+      свойствами (`isDirectory`, `isFile`, `isSymbolicLink`), а не методами Node.js
+- [x] `src/access/memory.js` — копия из `u2ai-server`: копирование файла и поддерева
+- [x] `src/access/fs.js` — копия из `u2ai-server`: `listFiles(relative, { depth, limit,
+      includeHidden })` и `copy(source, destination, { overwrite })` с правилами путей
+- [x] Правило: правки слоя доступа идут в `u2ai-server` первыми, остальные пакеты получают
+      копию `src/access/*`
+- [x] README (EN), planned.md (RU)
+- [x] Проверка: `npm test` — 189 тестов, 188 проходят, 1 пропущен, 0 падений
+
 ---
 
 ## Порядок работы и зависимости шагов
