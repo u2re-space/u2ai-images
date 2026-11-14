@@ -11,7 +11,7 @@
  *          rasterTrim, rasterSplit, rasterPadImageBytes, rasterRemoveImagePadding,
  *          rasterApplyAlphaMask, rasterColorKeyAlpha, rasterLocalAlphaMatte,
  *          rasterLocalAlphaMask, rasterBorderKey, rasterDetectFakeTransparency, rasterizeSvg,
- *          rasterCompare, frameFor, parseColor, getRaster, fitBox
+ *          rasterCompare, rasterMedianAlpha, frameFor, parseColor, getRaster, fitBox
  * @ai.tags image, raster, crop, pad, trim, alpha
  * @ai.hint io
  * @ai.hint legacy-0.2
@@ -197,6 +197,45 @@ export async function encodeRgba(frame, { format = 'png', quality = 92 } = {}, p
 }
 
 /**
+ * The alpha of several cut-outs of the same picture, taken together.
+ *
+ * A model that redraws the picture draws it a little differently every time: a detail may be
+ * lost in one answer and kept in the next. The median of the answers is the cut-out the
+ * attempts agree on — a detail that half of them keep stays, a detail that one of them keeps
+ * alone goes, and the soft edge of the object stays soft.
+ *
+ * The frames have to be of the same size: the answers of different frames cannot be compared
+ * pixel by pixel, and the first one is taken then.
+ * @param {Array<{ width: number, height: number, data: Buffer }>} frames the RGBA frames
+ * @returns {{ width: number, height: number, data: Buffer }|null} null when there is no frame
+ * @exports
+ * @ai.hint pure
+ */
+export function rasterMedianAlpha(frames) {
+    const list = (Array.isArray(frames) ? frames : []).filter((frame) => frame?.width && frame?.height && frame.data);
+    if (!list.length) return null;
+    const first = list[0];
+    if (list.length === 1) return first;
+    const same = list.every((frame) => frame.width === first.width && frame.height === first.height);
+    if (!same) return first;
+    const pixels = first.width * first.height;
+    const out = Buffer.from(first.data);
+    const column = new Uint8Array(list.length);
+    for (let pixel = 0; pixel < pixels; pixel += 1) {
+        for (let index = 0; index < list.length; index += 1) {
+            column[index] = list[index].data[pixel * 4 + 3];
+        }
+        column.sort();
+        const middle = Math.floor(list.length / 2);
+        const alpha = list.length % 2 === 1
+            ? column[middle]
+            : Math.round((column[middle - 1] + column[middle]) / 2);
+        out[pixel * 4 + 3] = alpha;
+    }
+    return { width: first.width, height: first.height, data: out };
+}
+
+/**
  * Scale a raw RGBA frame into another frame, keeping the pixels proportional.
  * @param {{ width: number, height: number, data: Buffer }} frame
  * @param {number} width
@@ -205,8 +244,7 @@ export async function encodeRgba(frame, { format = 'png', quality = 92 } = {}, p
  * @returns {Promise<{ width: number, height: number, data: Buffer }>}
  * @exports
  * @ai.hint io
- */
-export async function rasterScale(frame, width, height, preferred = 'auto') {
+ */export async function rasterScale(frame, width, height, preferred = 'auto') {
     if (frame.width === width && frame.height === height) return frame;
     const sharp = await import('./sharp.js');
     if (preferred !== 'canvas' && await sharp.sharpAvailable()) {
@@ -1404,12 +1442,13 @@ export async function getRaster({ engine = 'auto', magickPath = null } = {}) {
         },
         /**
          * Cut the padding off an answer and restore the original frame.
-         * @param {{ bytes: Buffer, width?: number, height?: number, originalWidth: number, originalHeight: number }} options
+         * @param {{ bytes: Buffer, width?: number, height?: number, originalWidth: number, originalHeight: number,
+         *   normalized?: boolean }} options
          * @returns {Promise<Buffer>}
          */
-        async removeImagePadding({ bytes, width = null, height = null, originalWidth, originalHeight }) {
+        async removeImagePadding({ bytes, width = null, height = null, originalWidth, originalHeight, normalized = false }) {
             return await rasterRemoveImagePadding({
-                bytes, width, height, originalWidth, originalHeight, engine: active ?? 'auto',
+                bytes, width, height, originalWidth, originalHeight, normalized, engine: active ?? 'auto',
             });
         },
         /**

@@ -36,6 +36,10 @@ export async function run(ctx) {
     const mode = String(options.alphaMode ?? config?.image?.alphaMode ?? 'auto').trim().toLowerCase();
     // The subject is what the model has to keep: the name of the object of the picture.
     const subject = String(options.subject ?? '').trim() || null;
+    // The model is asked more than once: it draws the picture a little differently every time,
+    // and the answers are taken together, so a detail that one of them lost comes back.
+    const asked = Number.parseInt(String(options.attempts ?? '').trim(), 10);
+    const attempts = Number.isSafeInteger(asked) && asked > 0 ? asked : 3;
     const output = localTarget({ options, cwd, input, suffix: 'alpha', ext: '.png' });
 
     const plan = {
@@ -43,6 +47,7 @@ export async function run(ctx) {
         input,
         output: path.relative(cwd, output).split(path.sep).join('/'),
         mode,
+        attempts,
         ...(subject ? { subject } : {}),
     };
     if (options.dryRun) return reportPlan({ options, renderer }, plan);
@@ -63,6 +68,7 @@ export async function run(ctx) {
             model: options.imageModel ?? null,
             alphaMode: mode,
             subject,
+            attempts,
         });
         if (!result.changed && result.reason !== 'already') {
             renderer.line('warn', `The alpha channel was not built: ${result.reason}.`);
@@ -70,11 +76,13 @@ export async function run(ctx) {
         return reportResult({ options, renderer }, {
             command: 'alpha',
             mode,
+            attempts,
             changed: result.changed,
             reason: result.reason,
+            ...(result.model ? { model: result.model } : {}),
             files: [path.relative(cwd, output).split(path.sep).join('/')],
             text: result.changed
-                ? `the alpha channel is built (${result.reason})`
+                ? `the alpha channel is built (${result.reason})${result.model ? ` by ${result.model}` : ''}`
                 : `the alpha channel was not built: ${result.reason}`,
         });
     } finally {

@@ -24,8 +24,8 @@ export const COMMANDS = Object.freeze([
     { name: 'resize', summary: 'Change the size of a picture.', usage: 'ai-image resize <file> [--width <n>] [--height <n>]' },
     { name: 'trim', summary: 'Cut the uniform or transparent edges off.', usage: 'ai-image trim <file> [--fuzz <n>]' },
     { name: 'split', summary: 'Cut a picture into a grid of tiles.', usage: 'ai-image split <file> --rows <n> --cols <n>' },
-    { name: 'alpha', summary: 'Build a real alpha channel for a picture.', usage: 'ai-image alpha <file> [--alpha-mode auto|mask|contour|flat|key|off] [--subject <text>]' },
-    { name: 'background', summary: 'Remove the background of a picture.', usage: 'ai-image background <file> [--alpha-mode auto|mask|contour|flat|key|off] [--subject <text>]' },
+    { name: 'alpha', summary: 'Build a real alpha channel for a picture.', usage: 'ai-image alpha <file> [--alpha-mode auto|mask|contour|flat|key|off] [--subject <text>] [--attempts <n>]' },
+    { name: 'background', summary: 'Remove the background of a picture.', usage: 'ai-image background <file> [--alpha-mode auto|mask|contour|flat|key|off] [--subject <text>] [--attempts <n>]' },
     { name: 'compare', summary: 'Compare pictures: a sheet and a difference map.', usage: 'ai-image compare <file> <file> [--mode sheet|difference|both]' },
     { name: 'info', summary: 'Tell what a picture is: format, frame, alpha, weight.', usage: 'ai-image info <file>' },
     { name: 'purpose', summary: 'Show the purpose map and the model each purpose resolves to.', usage: 'ai-image purpose [--list]' },
@@ -103,6 +103,9 @@ Local options:
                            takes the native alpha of the picture first.
       --subject <text>    What the cut-out has to keep: the name of the object.
                            Everything else goes away, the fragments of the neighbours too.
+      --attempts <n>      How many times the model is asked for the cut-out (3 by default).
+                           The answers are taken together, so a detail that one of them lost
+                           comes back.
       --layout <name>   Layout of the comparison: row | column | grid.
       --frame <shape>   Frame of the comparison: 16:9, 2.39:1, 800x600.
       --gap <n>         The gap between the cells of the comparison.

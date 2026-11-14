@@ -42,6 +42,7 @@ import {
     rasterInfo,
     rasterIsOpaque,
     rasterLocalAlphaMask,
+    rasterMedianAlpha,
 } from './raster.js';
 
 /**
@@ -442,40 +443,71 @@ export function alphaFormatWarning(file) {
  * transparent background and the alpha of the answer is the answer — no matte, no painted
  * background, no second generation. The answer is judged before it is accepted: a picture
  * without a real alpha, or one that leaves a wide halo around the edge, is not a cut-out.
+ *
+ * A model that redraws the picture draws it a little differently every time, so the pass may
+ * ask more than once: the answers that pass the check are taken together, and the median of
+ * their alpha is the cut-out the attempts agree on.
  * @param {{ client: object, config?: object|null, base: string, abs: string, cwd: string,
- *   signal?: AbortSignal, model?: string|null, engine?: string, totalPixels?: number }} options
- * @returns {Promise<{ applied: boolean, error?: Error, model?: string|null, verdict?: object }>}
+ *   signal?: AbortSignal, model?: string|null, engine?: string, totalPixels?: number,
+ *   attempts?: number }} options
+ * @returns {Promise<{ applied: boolean, error?: Error, model?: string|null, verdict?: object,
+ *   attempts?: number }>}
  * @ai.hint io
  */
-async function modelAlphaPass({ client, config, base, abs, cwd, signal, model, engine, totalPixels, subject = null }) {
-    const answer = await askModel({
-        client, config, file: base, prompt: cutoutPrompt(subject), signal, model, background: 'transparent',
-    });
-    if (!isRaster(answer)) {
-        return { applied: false, error: answer?.error ?? new Error('The model answered without a picture.') };
-    }
-    // The answer is built aside: a picture that is not a cut-out must not reach the file.
-    const outPath = path.join(cwd, `.tmp-alpha-out-${process.pid}-${Date.now()}.png`);
-    try {
-        // The file of the result is a PNG: a host that answered with another format is converted.
-        const bytes = answer.ext === 'png'
-            ? answer.bytes
-            : await encodeRgba(await decodeRgba(answer.bytes, engine), { format: 'png' }, engine);
-        await writeFile(outPath, bytes);
-        const verdict = await judgeAlphaShares({ abs: outPath, cwd, engine, totalPixels });
-        if (!verdict.usable) {
-            return {
-                applied: false,
-                error: new Error(`The alpha of the model is not a cut-out (cleared ${verdict.cleared ?? 0}, `
-                    + `soft ${verdict.soft ?? 0}).`),
-                verdict,
-            };
+async function modelAlphaPass({ client, config, base, abs, cwd, signal, model, engine, totalPixels,
+    subject = null, attempts = 1 }) {
+    const rounds = Number.isSafeInteger(attempts) && attempts > 0 ? attempts : 1;
+    const usable = [];
+    let lastError = null;
+    let lastVerdict = null;
+    let modelUsed = null;
+    for (let round = 0; round < rounds; round += 1) {
+        const answer = await askModel({
+            client, config, file: base, prompt: cutoutPrompt(subject), signal, model, background: 'transparent',
+        });
+        if (!isRaster(answer)) {
+            lastError = answer?.error ?? lastError;
+            continue;
         }
-        await copyFile(outPath, abs);
-        return { applied: true, model: answer.model, verdict };
-    } finally {
-        await unlink(outPath).catch(() => {});
+        modelUsed = answer.model ?? modelUsed;
+        // The answer is built aside: a picture that is not a cut-out must not reach the file.
+        const outPath = path.join(cwd, `.tmp-alpha-out-${process.pid}-${Date.now()}-${round}.png`);
+        try {
+            // The file of the result is a PNG: a host that answered with another format is converted.
+            const bytes = answer.ext === 'png'
+                ? answer.bytes
+                : await encodeRgba(await decodeRgba(answer.bytes, engine), { format: 'png' }, engine);
+            await writeFile(outPath, bytes);
+            const verdict = await judgeAlphaShares({ abs: outPath, cwd, engine, totalPixels });
+            lastVerdict = verdict;
+            if (!verdict.usable) {
+                lastError = new Error(`The alpha of the model is not a cut-out (cleared ${verdict.cleared ?? 0}, `
+                    + `soft ${verdict.soft ?? 0}).`);
+                continue;
+            }
+            const frame = await decodeRgba(bytes, engine).catch(() => null);
+            if (frame) usable.push({ path: outPath, frame });
+        } finally {
+            if (!usable.some((entry) => entry.path === outPath)) await unlink(outPath).catch(() => {});
+        }
     }
+    if (!usable.length) {
+        return {
+            applied: false,
+            error: lastError ?? new Error('The model did not deliver a cut-out.'),
+            verdict: lastVerdict,
+        };
+    }
+    if (usable.length === 1) {
+        await copyFile(usable[0].path, abs);
+    } else {
+        // The answers are taken together: the median of their alpha is the cut-out they agree on.
+        const merged = rasterMedianAlpha(usable.map((entry) => entry.frame));
+        if (merged) await writeFile(abs, await encodeRgba(merged, { format: 'png' }, engine));
+    }
+    for (const entry of usable) await unlink(entry.path).catch(() => {});
+    const verdict = await judgeAlphaShares({ abs, cwd, engine, totalPixels });
+    return { applied: true, model: modelUsed, verdict, attempts: usable.length };
 }
 
 /**
@@ -488,11 +520,15 @@ async function modelAlphaPass({ client, config, base, abs, cwd, signal, model, e
  * `alphaSource` names the clean RGB base — the reference, the measurement crop, or the file
  * before the upscale — so the alpha is never derived from a picture that already carries a painted
  * transparency plate.
+ *
+ * `attempts` says how many times the model is asked: a model that redraws the picture draws it a
+ * little differently every time, and the answers are taken together, so a detail that one of
+ * them lost comes back. The commands of the CLI ask three times.
  * @param {{ client?: object|null, config?: object|null, file: string, signal?: AbortSignal,
  *   model?: string|null, alphaSource?: string|null, feather?: number,
- *   alphaMode?: string, subject?: string|null }} options
+ *   alphaMode?: string, subject?: string|null, attempts?: number }} options
  * @returns {Promise<{ changed: boolean, reason: string, model?: string|null,
- *   source?: string|null, softEdge?: boolean, error?: Error }>}
+ *   source?: string|null, softEdge?: boolean, attempts?: number, error?: Error }>}
  * @exports
  * @ai.hint io
  */
@@ -506,6 +542,7 @@ export async function applyGeneratedAlphaMask({
     feather = config?.image?.alphaFeather ?? 1,
     alphaMode = config?.image?.alphaMode ?? 'auto',
     subject = null,
+    attempts = 1,
 } = {}) {
     const mode = String(alphaMode || 'auto').toLowerCase();
     if (mode === 'off') return { changed: false, reason: 'off' };
@@ -546,6 +583,7 @@ export async function applyGeneratedAlphaMask({
         for (const candidate of alphaModels({ config, model })) {
             const result = await modelAlphaPass({
                 client, config, base, abs, cwd, signal, model: candidate, engine, totalPixels, subject,
+                attempts,
             });
             if (result.applied) {
                 return {
@@ -553,6 +591,7 @@ export async function applyGeneratedAlphaMask({
                     changed: true,
                     reason: 'model',
                     model: result.model,
+                    ...(result.attempts > 1 ? { attempts: result.attempts } : {}),
                 };
             }
             lastError = result.error ?? lastError;

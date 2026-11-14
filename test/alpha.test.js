@@ -301,3 +301,53 @@ test('the next model is asked when the answer is not a cut-out', async () => {
     assert.equal(asked[1], 'openai/gpt-image-2.6-sunburst');
     assert.equal(result.changed, true, 'the local fallback finished the work');
 });
+
+test('the answers of several attempts are taken together', async () => {
+    const dir = await tempDir();
+    const file = path.join(dir, 'a.png');
+    await writeFile(file, await solidPng(64, 64, { r: 10, g: 10, b: 10, a: 255 }));
+
+    // A cut-out with a square in the middle; one of the attempts loses a detail of it.
+    const cutout = async (lost) => {
+        const data = Buffer.alloc(64 * 64 * 4);
+        for (let y = 0; y < 64; y += 1) {
+            for (let x = 0; x < 64; x += 1) {
+                const at = (y * 64 + x) * 4;
+                const inside = x >= 16 && x < 48 && y >= 16 && y < 48;
+                const detail = inside && lost && x >= 30 && x < 34 && y >= 30 && y < 34;
+                data[at] = 10;
+                data[at + 1] = 10;
+                data[at + 2] = 10;
+                data[at + 3] = inside && !detail ? 255 : 0;
+            }
+        }
+        return await encodeRgba({ width: 64, height: 64, data }, { format: 'png' });
+    };
+
+    const answers = [await cutout(true), await cutout(false), await cutout(false)];
+    let round = 0;
+    const client = {
+        images: {
+            async edit(params) {
+                const bytes = answers[round % answers.length];
+                round += 1;
+                return { model: params.model, images: [{ bytes }] };
+            },
+        },
+    };
+
+    const result = await applyGeneratedAlphaMask({
+        client,
+        config: cloneDefaults(),
+        file,
+        alphaMode: 'mask',
+        attempts: 3,
+    });
+
+    assert.equal(result.changed, true);
+    assert.equal(result.attempts, 3, 'the three answers were taken together');
+    const { data } = await decodeRgba(await readFile(file));
+    const at = (x, y) => data[(y * 64 + x) * 4 + 3];
+    assert.equal(at(32, 32), 255, 'the detail that one attempt lost comes back');
+    assert.equal(at(4, 4), 0, 'the background stays transparent');
+});

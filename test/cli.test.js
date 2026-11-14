@@ -92,6 +92,12 @@ test('the parser reads the subject of the cut-out', () => {
     assert.equal(options.subject, 'chess bishop');
 });
 
+test('the parser reads the number of the attempts of the cut-out', () => {
+    const options = parseArgv(['background', 'a.png', '--attempts', '5']);
+    assert.equal(options.attempts, '5');
+    assert.equal(parseArgv(['background', 'a.png']).attempts, null);
+});
+
 test('the flags of the configuration only carry what was given', () => {
     const overrides = configOverrides(parseArgv(['generate', 'x']));
     assert.deepEqual(overrides, {});

@@ -23,6 +23,7 @@ import {
     rasterFitToFrame,
     rasterInfo,
     rasterIsOpaque,
+    rasterMedianAlpha,
     rasterPadImageBytes,
     rasterRemoveImagePadding,
     rasterSplit,
@@ -276,6 +277,20 @@ test('the adapter of the client pads, crops and fits', async () => {
     assert.equal(frame.width, 30);
     const fitted = await raster.fitToFrame({ bytes: await solidPng(80, 40), width: 40, height: 40, fit: 'cover' });
     assert.equal((await decodeRgba(fitted)).width, 40);
+});
+
+test('the median of several cut-outs is the one they agree on', () => {
+    const frame = (...alphas) => ({
+        width: alphas.length,
+        height: 1,
+        data: Buffer.from(alphas.flatMap((alpha) => [10, 10, 10, alpha])),
+    });
+    const merged = rasterMedianAlpha([frame(255, 0), frame(255, 0), frame(0, 0)]);
+    assert.equal(merged.data[3], 255, 'a detail that two of the answers keep stays');
+    assert.equal(merged.data[7], 0, 'a detail that one of the answers keeps alone goes');
+    const even = rasterMedianAlpha([frame(255, 0), frame(0, 0)]);
+    assert.equal(even.data[3], 128, 'the middle of two answers is the half of them');
+    assert.equal(rasterMedianAlpha([]), null);
 });
 
 test('the soft share of the alpha tells a halo from a clean cut-out', async () => {

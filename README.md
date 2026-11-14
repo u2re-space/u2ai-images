@@ -261,6 +261,18 @@ everything else are told to disappear. The same text goes into the prompt of the
 ai-image background bishop.png --subject "chess bishop" --out bishop-cut.png
 ```
 
+A model that redraws the picture draws it a little differently every time: a detail of the
+edge may be lost in one answer and kept in the next. The commands `background` and `alpha`
+therefore ask the model three times and take the answers together — the median of their alpha
+is the cut-out the attempts agree on. A detail that half of the answers keep stays, a detail
+that one answer keeps alone goes, and the soft edge of the object stays soft. The flag
+`--attempts <n>` says how many times the model is asked; the library default of
+`applyGeneratedAlphaMask` is one answer.
+
+```bash
+ai-image background board.png --subject "chess board" --attempts 3 --out board-cut.png
+```
+
 A user who wants a technical override names it: `image.maskModel` (`self` means the model
 that drew the picture) takes the place of the list.
 
@@ -326,6 +338,10 @@ Alpha modes: `auto` (native alpha → the model cuts the subject out → `contou
 The frames of a request are made in three ways: `direct` (the frame as it is), `align` (the
 canvas is padded, the content keeps its scale and its position, and the padding is cut off
 the answer) and `downscale` (the answer is scaled down, the proportions are kept).
+
+The padding is cut off by the share of the answer: a model that answers with a frame of its
+own still put the content where the padding put it, so the share of the canvas is the way back
+to the content. The answer of a different frame does not break the zone.
 
 ## The agentic pipeline
 

@@ -927,6 +927,10 @@ export async function createClient({ config, env = process.env, signal = null, o
 
     /**
      * Cut the padding off every payload.
+     *
+     * The zone is cut by its share of the answer: a model that answers with a frame of its own
+     * still put the content where the padding put it, so the share of the canvas is the way back
+     * to the content.
      * @param {string[]} payloads
      * @param {{ width: number, height: number, originalWidth: number, originalHeight: number }} padding
      * @param {object|null} adapter
@@ -938,7 +942,7 @@ export async function createClient({ config, env = process.env, signal = null, o
         const out = [];
         for (const payload of payloads) {
             const bytes = Buffer.from(payload, 'base64');
-            const cut = await adapter.removeImagePadding({ bytes, ...padding }).catch(() => null);
+            const cut = await adapter.removeImagePadding({ bytes, ...padding, normalized: true }).catch(() => null);
             out.push(cut ? cut.toString('base64') : payload);
         }
         return out;

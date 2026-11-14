@@ -224,8 +224,8 @@ test('the plan of an edit: the padding keeps the content and the answer is cropp
             calls.push({ op: 'pad', targetWidth, targetHeight });
             return { bytes, width: targetWidth, height: targetHeight, originalWidth: 100, originalHeight: 100, padded: true };
         },
-        removeImagePadding: async ({ bytes, originalWidth, originalHeight }) => {
-            calls.push({ op: 'crop', originalWidth, originalHeight });
+        removeImagePadding: async ({ bytes, originalWidth, originalHeight, normalized }) => {
+            calls.push({ op: 'crop', originalWidth, originalHeight, normalized });
             return bytes;
         },
         fitToFrame: async ({ bytes }) => bytes,
@@ -242,6 +242,7 @@ test('the plan of an edit: the padding keeps the content and the answer is cropp
         assert.equal(calls[0].op, 'pad');
         assert.equal(calls[1].op, 'crop');
         assert.equal(calls[1].originalWidth, 100);
+        assert.equal(calls[1].normalized, true, 'the zone is cut by its share of the answer');
         const request = host.requests.at(-1);
         assert.match(request.body, /Keep the source artwork at its original scale/);
     } finally {
