@@ -18,7 +18,7 @@ import { PURPOSE_MODEL_MAP } from '../model/purpose.js';
 export const defaults = {
     // --- models ---------------------------------------------------------------
     /** Text model: the agent roles and the AI parser talk through it. */
-    model: 'moonshotai/kimi-k3.1-pro',
+    model: 'minimax/minimax-m3.1-flash',
     /** Picture model: generate, edit and the technical alpha passes. */
     imageModel: 'openai/gpt-image-2.6-sunburst',
     /** Model of the AI parser; null keeps the text model. */
