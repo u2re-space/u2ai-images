@@ -41,7 +41,7 @@ export function buildResponsesBody({
     // spec answers with "Unknown parameter: 'text.type'".
     if (text) body.text = { format: text };
     // How the model thinks: the effort of the request and the summary of the reasoning.
-    // The tier of the planning (`complexity`) is not a field of a text request — it belongs to
+    // The tier of the planning (`quality`) is not a field of a text request — it belongs to
     // the picture models, and it travels in the body of a picture request.
     if (effort || summary) {
         body.reasoning = {};

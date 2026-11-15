@@ -31,6 +31,7 @@ import {
     parseImageSize,
     presetImageSize,
     sameAspectImageSize,
+    snapResolution,
     supportedAspectRatios,
     tierFromToken,
 } from '../src/image/sizing.js';
@@ -47,10 +48,10 @@ import {
     backgroundValue,
     encodeMultipart,
     generationBody,
-    imageComplexityValue,
     imageFormatField,
     imageModelFor,
     imagePayloads,
+    imageQualityValue,
     imageSources,
     imageTransport,
     normalizeImageFormat,
@@ -67,6 +68,7 @@ import { MAX_IMAGE_EDGE, MAX_IMAGE_PIXELS, MAX_IMAGE_RATIO, MIN_IMAGE_PIXELS } f
 
 const GPT = 'openai/gpt-image-2.6-sunburst';
 const RIVERFLOW = 'sourceful/riverflow-v2.6-pro';
+const SEEDREAM = 'bytedance-seed/seedream-5-5';
 
 const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
@@ -205,8 +207,9 @@ test('the payload of a request', () => {
     assert.equal(backgroundValue({ model: GPT, format: 'png', background: 'transparent' }), 'transparent');
     assert.equal(backgroundValue({ model: GPT, format: 'jpeg', background: 'transparent' }), null);
     assert.equal(backgroundValue({ model: GPT, format: 'png', background: 'auto' }), null);
-    assert.equal(imageComplexityValue({ model: GPT }), 'high');
-    assert.equal(imageComplexityValue({ model: 'unknown/model' }), null);
+    assert.equal(imageQualityValue({ model: GPT }), 'high');
+    assert.equal(imageQualityValue({ model: 'unknown/model' }), null);
+    assert.equal(imageQualityValue({ model: GPT, quality: 'max' }), 'max');
     assert.deepEqual(normalizeVectorRatio('landscape'), '4:3');
     assert.deepEqual(svgConversionModel(GPT), { model: 'gpt-6.1-terra' });
     assert.equal(svgConversionModel('recraft/recraft-v4.1-pro-vector'), null);
@@ -218,10 +221,48 @@ test('the body of a generation', () => {
     assert.equal(body.prompt, 'a lighthouse');
     assert.equal(body.size, '2048x2048');
     assert.equal(body.output_format, 'jpeg');
-    assert.equal(body.complexity, 'high');
+    assert.equal(body.quality, 'high');
     assert.equal(generationBody({ model: GPT, prompt: 'p', size: 'auto' }).size, undefined);
     assert.equal(withSizeHint('a lighthouse', { size: '1024x1024' }, GPT), 'a lighthouse', 'a gpt-image keeps the fields');
     assert.match(withSizeHint('a lighthouse', { resolution: '2K' }, RIVERFLOW), /Requested output: resolution 2K/);
+});
+
+test('the fields of the request are the ones the model takes', () => {
+    // The seed: only the models that keep it.
+    assert.equal(generationBody({ model: SEEDREAM, prompt: 'p', seed: 42 }).seed, 42);
+    assert.equal(generationBody({ model: GPT, prompt: 'p', seed: 42 }).seed, undefined, 'gpt-image keeps no seed');
+    // The compression of a jpeg or a webp.
+    assert.equal(generationBody({ model: GPT, prompt: 'p', format: 'jpeg', compression: 50 }).output_compression, 50);
+    assert.equal(generationBody({ model: GPT, prompt: 'p', format: 'png', compression: 50 }).output_compression, undefined);
+    assert.equal(generationBody({ model: SEEDREAM, prompt: 'p', format: 'jpeg', compression: 50 }).output_compression, undefined);
+    // The frames of an animated GIF.
+    const gif = generationBody({ model: GPT, prompt: 'p', format: 'gif', frameCount: 4, frameDurationMs: 100 });
+    assert.equal(gif.output_format, 'gif');
+    assert.equal(gif.frame_count, 4);
+    assert.equal(gif.frame_duration_ms, 100);
+    assert.equal(generationBody({ model: GPT, prompt: 'p', format: 'gif', frameCount: 40 }).frame_count, undefined);
+    // The mask of the area to repaint: it needs a source picture.
+    const mask = 'data:image/png;base64,AAAA';
+    const masked = generationBody({ model: GPT, prompt: 'p', references: ['data:image/png;base64,AAAA'], mask });
+    assert.deepEqual(masked.mask, { image_url: { url: mask } });
+    assert.equal(generationBody({ model: GPT, prompt: 'p', mask }).mask, undefined, 'the mask works with a source');
+    assert.equal(generationBody({ model: SEEDREAM, prompt: 'p', references: ['x'], mask }).mask, undefined);
+    // The count is cut to the ceiling of the model.
+    assert.equal(generationBody({ model: GPT, prompt: 'p', n: 3 }).n, 3);
+    assert.equal(generationBody({ model: SEEDREAM, prompt: 'p', n: 3 }).n, 1, 'seedream answers with one picture');
+});
+
+test('the shapes and the tiers are the ones of the model', () => {
+    assert.ok(supportedAspectRatios(SEEDREAM, 'image').includes('9:19.5'), 'the cinema shapes of the vendor');
+    assert.ok(supportedAspectRatios(SEEDREAM, 'image').includes('1:2'));
+    assert.ok(!supportedAspectRatios(GPT, 'image').includes('9:19.5'), 'gpt-image stops at 21:9');
+    assert.ok(supportedAspectRatios(GPT, 'image').includes('21:9'));
+    // The tier of a model is snapped to its own menu.
+    assert.equal(snapResolution('4K', SEEDREAM), '2K', 'seedream refuses 4K');
+    assert.equal(snapResolution('2K', SEEDREAM), '2K');
+    assert.equal(snapResolution('1K', SEEDREAM), '1K');
+    assert.equal(snapResolution('4K', RIVERFLOW), '4K', 'riverflow serves 4K');
+    assert.equal(snapResolution('1.5K', RIVERFLOW), '1K', 'the tier below the menu is the closest one');
 });
 
 test('the answer of the API is read', () => {

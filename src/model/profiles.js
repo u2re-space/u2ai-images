@@ -5,7 +5,9 @@
  *          it understands and the ways its gateway misbehaves.
  * @exports IMAGE_MODEL_PROFILES, DEFAULT_PROFILE, imageModelProfile, imageModelFamily,
  *          MIN_IMAGE_PIXELS, MAX_IMAGE_PIXELS, MAX_IMAGE_EDGE, MAX_IMAGE_RATIO,
- *          SEEDREAM, SEEDREAM_MODEL, DEFAULT_IMAGE_MODEL
+ *          SEEDREAM, SEEDREAM_MODEL, DEFAULT_IMAGE_MODEL, GPT_IMAGE_RATIOS,
+ *          SEEDREAM_RATIOS, RIVERFLOW_RATIOS, SEEDREAM_RESOLUTIONS, RIVERFLOW_RESOLUTIONS,
+ *          QUALITY_LEVELS, snapQuality
  * @ai.tags model, images
  * @ai.hint keep
  */
@@ -20,6 +22,8 @@ export const RIVERFLOW = /(?:^|\/)riverflow-/i;
 export const RECRAFT_VECTOR = /(?:^|\/)recraft[^/]*vector/i;
 /** The ByteDance Seedream family — a model with free frames and a floor of 960×960 pixels. */
 export const SEEDREAM = /(?:^|\/)seedream/i;
+/** The families whose picture is reproducible from a seed (the catalog says `image_seed: true`). */
+export const SEEDED = /(?:^|\/)(?:flux[.-]|qwen-image|krea-|hy-image)/i;
 
 /** The default picture model of the CLI. */
 export const DEFAULT_IMAGE_MODEL = 'bytedance-seed/seedream-5-5';
@@ -37,6 +41,43 @@ export const RIVERFLOW_MODEL = 'sourceful/riverflow-v2.6-pro';
 export const SVG_CONVERSION_MODEL = 'gpt-6.1-terra';
 
 /**
+ * The shapes the gpt-image family takes (the catalog of the gateway, November 2026).
+ *
+ * The field itself is coarse: the model rounds `4:3` and `21:9` to its own native frames
+ * (1536x1024 and 1024x1536), so a shape that has to be kept exactly is asked for as a frame.
+ */
+export const GPT_IMAGE_RATIOS = Object.freeze([
+    '1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16', '21:9', 'auto',
+]);
+
+/**
+ * The shapes the seedream family takes — a much wider list than the standard catalogue, with
+ * the cinema shapes of the vendor (`9:19.5`, `9:20`, `9:21`) and the narrow ones (`1:2`).
+ */
+export const SEEDREAM_RATIOS = Object.freeze([
+    '1:1', '1:2', '2:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9',
+    '9:19.5', '19.5:9', '9:20', '20:9', '9:21', '21:9', 'auto',
+]);
+
+/** The shapes the riverflow family takes. */
+export const RIVERFLOW_RATIOS = Object.freeze([
+    '1:1', '4:3', '3:4', '3:2', '2:3', '5:4', '4:5', '16:9', '9:16', '21:9', 'auto',
+]);
+
+/** The resolution tiers the seedream family takes: the vendor refuses everything else. */
+export const SEEDREAM_RESOLUTIONS = Object.freeze(['1K', '1.5K', '2K']);
+
+/** The resolution tiers the riverflow family takes. */
+export const RIVERFLOW_RESOLUTIONS = Object.freeze(['1K', '2K', '4K']);
+
+/**
+ * The quality levels of a picture, from the cheapest to the most expensive. The ladder is the
+ * order the levels are pulled down in: a model that does not take a level is asked for the
+ * closest one below it.
+ */
+export const QUALITY_LEVELS = Object.freeze(['low', 'medium', 'high', 'xhigh', 'max']);
+
+/**
  * What a model that the registry does not list is known to accept.
  *
  *   `customSizes`             — an arbitrary WIDTHxHEIGHT goes into `size` instead of a preset;
@@ -46,10 +87,18 @@ export const SVG_CONVERSION_MODEL = 'gpt-6.1-terra';
  *   `keepProSuffix`           — the `-pro` suffix survives a small frame;
  *   `omitSizeOnReject`        — when the host refuses the frame, the request is retried once
  *                               without the `size` field at all;
- *   `complexity`              — the complexity tier the model understands (e.g. 'high');
+ *   `quality`                 — the quality tier the model understands (e.g. 'high');
+ *   `qualities`               — the ladder of the quality levels the model takes;
+ *   `aspectRatios`            — the shapes the model is asked about;
+ *   `resolutionTiers`         — the model is tuned by a tier (1K | 1.5K | 2K | 4K);
+ *   `resolutions`             — the tiers the model really serves;
+ *   `seed`                    — the model takes a seed and answers the same picture for it;
+ *   `outputCompression`       — the model takes the degree of compression of a jpeg/webp;
+ *   `gif`                     — the model answers an animated GIF;
+ *   `mask`                    — the model takes a mask of the area to repaint;
+ *   `maxImages`               — how many pictures one request may carry;
  *   `routeEditsThroughGeneration` — /images/edits drops the tuning fields of this family, so the
  *                               source travels as a reference on /images/generations instead;
- *   `resolutionTiers`         — the model is tuned by a tier (512 | 1K | 2K | 4K);
  *   `sizeHints`               — the frame is repeated in the prompt text for this family;
  *   `paintsFakeTransparency`  — the gateway answers `background: transparent` with a painted plate;
  *   `vectorRatios`            — the model is tuned by a shape, not by a pixel frame;
@@ -63,9 +112,17 @@ export const DEFAULT_PROFILE = Object.freeze({
     padToMinPixels: true,
     keepProSuffix: false,
     omitSizeOnReject: false,
-    complexity: null,
-    routeEditsThroughGeneration: false,
+    quality: null,
+    qualities: null,
+    aspectRatios: null,
     resolutionTiers: false,
+    resolutions: null,
+    seed: false,
+    outputCompression: false,
+    gif: false,
+    mask: false,
+    maxImages: 1,
+    routeEditsThroughGeneration: false,
     sizeHints: false,
     paintsFakeTransparency: false,
     vectorRatios: false,
@@ -76,20 +133,46 @@ export const DEFAULT_PROFILE = Object.freeze({
 });
 
 /**
- * The rules in match order; the first match wins, so a narrow family comes
- * before a broad one.
+ * The rules in match order; a model that matches several of them takes all of them, so a narrow
+ * family adds to a broad one (a seeded family stays seeded when another rule matches it too).
  *
  * Riverflow keeps its `-pro` suffix at any frame — the suffix is the model, not
  * a size tier — and takes no 16-pixel padding. Its frame support differs
  * between the gateways, so a refused frame costs one retry without the field
  * rather than the whole request. It takes a far smaller frame than gpt-image
  * (128x128 is already legal) and a much wider shape.
+ *
+ * The quality, the shapes and the tiers are the ones the catalog of the gateway publishes for the
+ * model (November 2026), checked against the live answers of the endpoint.
  */
 export const IMAGE_MODEL_PROFILES = Object.freeze([
-    Object.freeze({ match: GPT_IMAGE_26, customSizes: true, div16Padding: true, complexity: 'high' }),
-    Object.freeze({ match: GPT_IMAGE_25, customSizes: true, div16Padding: true }),
+    Object.freeze({
+        match: GPT_IMAGE_26,
+        customSizes: true,
+        div16Padding: true,
+        quality: 'high',
+        qualities: ['auto', 'low', 'medium', 'high', 'xhigh', 'max'],
+        aspectRatios: GPT_IMAGE_RATIOS,
+        outputCompression: true,
+        gif: true,
+        mask: true,
+        maxImages: 10,
+    }),
+    Object.freeze({
+        match: GPT_IMAGE_25,
+        customSizes: true,
+        div16Padding: true,
+        quality: 'high',
+        qualities: ['auto', 'low', 'medium', 'high', 'xhigh', 'max'],
+        aspectRatios: GPT_IMAGE_RATIOS,
+        outputCompression: true,
+        mask: true,
+        maxImages: 10,
+    }),
     // Seedream takes a free frame, but the host refuses a frame below 960×960 pixels: the
-    // floor is the model's own, and it is what the small crops are padded up to.
+    // floor is the model's own, and it is what the small crops are padded up to. The frame of the
+    // vendor is a tier (`1K`, `1.5K`, `2K`) together with a shape, and the shapes are many more
+    // than the standard catalogue: the cinema frames and the narrow ones are on the menu.
     Object.freeze({
         match: SEEDREAM,
         customSizes: true,
@@ -97,15 +180,20 @@ export const IMAGE_MODEL_PROFILES = Object.freeze([
         maxPixels: 16_777_216,
         maxEdge: 4096,
         maxRatio: 4,
+        resolutionTiers: true,
+        resolutions: SEEDREAM_RESOLUTIONS,
+        aspectRatios: SEEDREAM_RATIOS,
+        seed: true,
     }),
     Object.freeze({
         match: RIVERFLOW,
         customSizes: true,
         keepProSuffix: true,
         omitSizeOnReject: true,
-        complexity: 'high',
         routeEditsThroughGeneration: true,
         resolutionTiers: true,
+        resolutions: RIVERFLOW_RESOLUTIONS,
+        aspectRatios: RIVERFLOW_RATIOS,
         sizeHints: true,
         paintsFakeTransparency: true,
         minPixels: 16_384,
@@ -113,6 +201,7 @@ export const IMAGE_MODEL_PROFILES = Object.freeze([
         maxEdge: 4096,
         maxRatio: 16,
     }),
+    Object.freeze({ match: SEEDED, seed: true }),
     Object.freeze({ match: RECRAFT_VECTOR, vectorRatios: true }),
 ]);
 
@@ -123,10 +212,13 @@ export const IMAGE_MODEL_PROFILES = Object.freeze([
  */
 export function imageModelProfile(model) {
     const name = String(model ?? '').trim();
-    const rule = IMAGE_MODEL_PROFILES.find((profile) => profile.match.test(name));
-    if (!rule) return { ...DEFAULT_PROFILE };
-    const { match, ...caps } = rule;
-    return { ...DEFAULT_PROFILE, ...caps };
+    const rules = IMAGE_MODEL_PROFILES.filter((profile) => profile.match.test(name));
+    if (!rules.length) return { ...DEFAULT_PROFILE };
+    // The rules of a model are merged in order: a narrow family adds to a broad one.
+    return rules.reduce((caps, rule) => {
+        const { match, ...rest } = rule;
+        return { ...caps, ...rest };
+    }, { ...DEFAULT_PROFILE });
 }
 
 /**
@@ -171,3 +263,30 @@ export const MAX_IMAGE_EDGE = (model = null) => imageModelProfile(model).maxEdge
  * @returns {number}
  */
 export const MAX_IMAGE_RATIO = (model = null) => imageModelProfile(model).maxRatio;
+
+/**
+ * Pull a quality level down to one the model really takes.
+ *
+ * A model without a quality field gets nothing: the field stays out of the request. A level the
+ * model does not know is pulled down to the closest one below it, so a request for `max` on a
+ * model that stops at `high` is sent as `high` and not refused.
+ * @param {string|null|undefined} quality
+ * @param {object} profile the profile of the model
+ * @returns {string|null}
+ */
+export function snapQuality(quality, profile) {
+    const ladder = Array.isArray(profile?.qualities) ? profile.qualities : null;
+    if (!ladder || !ladder.length || !profile?.quality) return null;
+    const value = String(quality ?? '').trim().toLowerCase();
+    if (!value || value === 'auto') return profile.quality;
+    if (ladder.includes(value)) return value;
+    const wanted = QUALITY_LEVELS.indexOf(value);
+    if (wanted < 0) return profile.quality;
+    let best = null;
+    for (const level of ladder) {
+        const index = QUALITY_LEVELS.indexOf(level);
+        if (index < 0 || index > wanted) continue;
+        if (best === null || index > QUALITY_LEVELS.indexOf(best)) best = level;
+    }
+    return best ?? ladder.find((level) => QUALITY_LEVELS.includes(level)) ?? profile.quality;
+}

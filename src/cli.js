@@ -36,12 +36,18 @@ export function parseArgv(argv) {
             'image-model': { type: 'string' },
             effort: { type: 'string' },
             summary: { type: 'string' },
+            quality: { type: 'string' },
             complexity: { type: 'string' },
             purpose: { type: 'string' },
             size: { type: 'string' },
             resolution: { type: 'string' },
             format: { type: 'string' },
             background: { type: 'string' },
+            seed: { type: 'string' },
+            compression: { type: 'string' },
+            frames: { type: 'string' },
+            'frame-duration': { type: 'string' },
+            mask: { type: 'string' },
             count: { type: 'string', short: 'n' },
             reference: { type: 'string', multiple: true },
             image: { type: 'string' },
@@ -94,12 +100,18 @@ export function parseArgv(argv) {
         imageModel: parsed.values['image-model'] ?? null,
         effort: parsed.values.effort ?? null,
         summary: parsed.values.summary ?? null,
+        quality: parsed.values.quality ?? null,
         complexity: parsed.values.complexity ?? null,
         purpose: parsed.values.purpose ?? null,
         size: parsed.values.size ?? null,
         resolution: parsed.values.resolution ?? null,
         format: parsed.values.format ?? null,
         background: parsed.values.background ?? null,
+        seed: parsed.values.seed ?? null,
+        compression: parsed.values.compression ?? null,
+        frames: parsed.values.frames ?? null,
+        frameDuration: parsed.values['frame-duration'] ?? null,
+        mask: parsed.values.mask ?? null,
         count: Number.isSafeInteger(count) && count > 0 ? count : 1,
         references: parsed.values.reference ?? [],
         image: parsed.values.image ?? null,
@@ -145,6 +157,19 @@ async function loadCommand(name) {
 }
 
 /**
+ * The number of a flag: null when the flag is absent, the number when it is one. A broken value
+ * stays broken (NaN) — the validation of the configuration is the one that names it.
+ * @param {string|null|undefined} value
+ * @returns {number|null}
+ */
+function flagNumber(value) {
+    if (value === null || value === undefined) return null;
+    const text = String(value).trim();
+    if (!text) return null;
+    return Number(text);
+}
+
+/**
  * The configuration fields the flags of the command override.
  *
  * Only the flags that were actually given are passed on: an empty flag must
@@ -165,7 +190,18 @@ export function configOverrides(options) {
     if (options.resolution) image.resolution = options.resolution;
     if (options.format) image.format = options.format;
     if (options.background) image.background = options.background;
-    if (options.complexity) image.complexity = options.complexity;
+    // `--complexity` is the old name of `--quality`: the flag writes the canonical field.
+    if (options.quality) image.quality = options.quality;
+    else if (options.complexity) image.quality = options.complexity;
+    if (options.seed !== null && options.seed !== undefined) image.seed = flagNumber(options.seed);
+    if (options.compression !== null && options.compression !== undefined) {
+        image.outputCompression = flagNumber(options.compression);
+    }
+    if (options.frames !== null && options.frames !== undefined) image.frameCount = flagNumber(options.frames);
+    if (options.frameDuration !== null && options.frameDuration !== undefined) {
+        image.frameDurationMs = flagNumber(options.frameDuration);
+    }
+    if (options.mask) image.mask = options.mask;
     if (options.purpose) image.purpose = options.purpose;
     if (options.engine) image.rasterEngine = options.engine;
     if (options.alphaMode) image.alphaMode = options.alphaMode;

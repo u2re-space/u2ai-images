@@ -17,8 +17,10 @@ import { applyGeneratedAlphaMask, alphaFormatWarning } from '../image/alpha.js';
 import { sniffImage } from '../openai/images.js';
 import {
     createCommandClient,
+    numberOption,
     outputTarget,
     pictureFormat,
+    pictureQuality,
     reportPlan,
     reportResult,
     usageError,
@@ -49,6 +51,19 @@ export async function run(ctx) {
     const resolution = options.resolution ?? config?.image?.resolution ?? null;
     const format = pictureFormat({ options, config });
     const background = options.background ?? config?.image?.background ?? 'auto';
+    const quality = pictureQuality({ options, config });
+    const seed = numberOption(options.seed ?? config?.image?.seed ?? null, '--seed', { min: 0 });
+    const compression = numberOption(
+        options.compression ?? config?.image?.outputCompression ?? null,
+        '--compression',
+        { min: 0, max: 100 },
+    );
+    const frameCount = numberOption(options.frames ?? config?.image?.frameCount ?? null, '--frames', { min: 2, max: 16 });
+    const frameDuration = numberOption(
+        options.frameDuration ?? config?.image?.frameDurationMs ?? null,
+        '--frame-duration',
+        { min: 20, max: 2000 },
+    );
     const count = options.count ?? 1;
     const target = outputTarget({ options, config, cwd });
 
@@ -66,6 +81,24 @@ export async function run(ctx) {
         references.push(`data:${kind.mime};base64,${bytes.toString('base64')}`);
     }
 
+    // The mask of the area to repaint: it works together with a source picture.
+    const maskPath = options.mask ?? config?.image?.mask ?? null;
+    let mask = null;
+    if (maskPath) {
+        if (!references.length) {
+            throw usageError('The mask needs a source picture: `--image <file> --mask <file>`.');
+        }
+        const abs = path.resolve(cwd, maskPath);
+        const bytes = await readFile(abs).catch(() => null);
+        if (!bytes) throw new Error(`The mask is not readable: ${maskPath}`);
+        const limit = config?.limits?.maxImageBytes ?? null;
+        if (limit && bytes.length > limit) {
+            throw new Error(`The mask is larger than the limit of ${limit} bytes: ${maskPath}`);
+        }
+        const kind = sniffImage(bytes);
+        mask = `data:${kind.mime};base64,${bytes.toString('base64')}`;
+    }
+
     const plan = {
         command: 'generate',
         prompt,
@@ -75,10 +108,15 @@ export async function run(ctx) {
         resolution,
         format,
         background,
-        complexity: config?.image?.complexity ?? 'auto',
+        quality,
+        seed,
+        compression,
+        frameCount,
+        frameDuration,
         effort: config?.reasoning?.effort ?? null,
         count,
         reference: options.image ?? null,
+        mask: maskPath,
         output: target.target,
     };
     if (options.dryRun) return reportPlan({ options, renderer }, plan);
@@ -99,6 +137,12 @@ export async function run(ctx) {
             n: count,
             format,
             background,
+            quality,
+            seed,
+            compression,
+            frameCount,
+            frameDurationMs: frameDuration,
+            mask,
             references: references.length ? references : null,
             signal: null,
         });

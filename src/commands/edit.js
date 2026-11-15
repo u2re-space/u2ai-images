@@ -17,8 +17,10 @@ import { applyGeneratedAlphaMask, alphaFormatWarning } from '../image/alpha.js';
 import { sniffImage } from '../openai/images.js';
 import {
     createCommandClient,
+    numberOption,
     outputTarget,
     pictureFormat,
+    pictureQuality,
     reportPlan,
     reportResult,
     usageError,
@@ -73,6 +75,19 @@ export async function run(ctx) {
     const size = options.size ?? null;
     const format = pictureFormat({ options, config });
     const background = options.background ?? config?.image?.background ?? 'auto';
+    const quality = pictureQuality({ options, config });
+    const seed = numberOption(options.seed ?? config?.image?.seed ?? null, '--seed', { min: 0 });
+    const compression = numberOption(
+        options.compression ?? config?.image?.outputCompression ?? null,
+        '--compression',
+        { min: 0, max: 100 },
+    );
+    const frameCount = numberOption(options.frames ?? config?.image?.frameCount ?? null, '--frames', { min: 2, max: 16 });
+    const frameDuration = numberOption(
+        options.frameDuration ?? config?.image?.frameDurationMs ?? null,
+        '--frame-duration',
+        { min: 20, max: 2000 },
+    );
     const target = outputTarget({ options, config, cwd });
 
     const limit = config?.limits?.maxImageBytes ?? null;
@@ -84,6 +99,10 @@ export async function run(ctx) {
         throw usageError('A vendor model takes at most 10 reference pictures.');
     }
 
+    // The mask of the area to repaint: it travels as its own file of the request.
+    const maskPath = options.mask ?? config?.image?.mask ?? null;
+    const mask = maskPath ? await readSource({ file: maskPath, cwd, maxBytes: limit }) : null;
+
     const plan = {
         command: 'edit',
         source,
@@ -93,9 +112,14 @@ export async function run(ctx) {
         size: size ?? 'the frame of the source',
         format,
         background,
-        complexity: config?.image?.complexity ?? 'auto',
+        quality,
+        seed,
+        compression,
+        frameCount,
+        frameDuration,
         effort: config?.reasoning?.effort ?? null,
         references: references.map((item) => item.filename),
+        mask: maskPath,
         output: target.target,
     };
     if (options.dryRun) return reportPlan({ options, renderer }, plan);
@@ -116,6 +140,12 @@ export async function run(ctx) {
             size,
             format,
             background,
+            quality,
+            seed,
+            compression,
+            frameCount,
+            frameDurationMs: frameDuration,
+            mask,
             signal: null,
         });
         const sink = createImageSink({ target: target.target, format, prefix: 'ai-image-edit' });

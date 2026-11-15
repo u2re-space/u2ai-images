@@ -30,11 +30,20 @@ import { ENUMS } from '../config/constants.js';
  *   - Kimi K3.1 Pro — 1M of context, 944K of output. It takes the reasoning off without a refusal
  *     and answers in a fraction of the time, so `none` stays on its ladder; the ceiling is
  *     `medium`, because the levels above it cost the same seconds and give nothing back.
+ *   - Gemini 4 Hydrogen — 1M of context and up to 1M of output with the continuation. The card of
+ *     the vendor names the levels of the effort `low`, `medium`, `high` and `xhigh` — there is no
+ *     `none`, so the reasoning off is raised to `low`.
  */
 export const TEXT_MODEL_PROFILES = Object.freeze({
     'minimax/minimax-m3.1-flash': {
         window: 1_000_000,
         maxOutput: 524_288,
+        ceiling: 'xhigh',
+        efforts: ['low', 'medium', 'high', 'xhigh'],
+    },
+    'google/gemini-4-hydrogen': {
+        window: 1_048_576,
+        maxOutput: 1_048_576,
         ceiling: 'xhigh',
         efforts: ['low', 'medium', 'high', 'xhigh'],
     },

@@ -21,14 +21,16 @@ export const ENV_PREFIX = 'AI_IMAGE_';
  */
 export const ENUMS = Object.freeze({
     /** Formats the CLI writes. */
-    imageFormats: Object.freeze(['png', 'jpeg', 'webp', 'svg']),
+    imageFormats: Object.freeze(['png', 'jpeg', 'webp', 'gif', 'svg']),
     /** Background of a generated picture. */
     imageBackgrounds: Object.freeze(['auto', 'transparent', 'opaque']),
     /** The frame presets the image API knows; a free WIDTHxHEIGHT is allowed too. */
     imageSizes: Object.freeze(['auto', '1024x1024', '1536x1024', '1024x1536']),
     /** Resolution tiers of the families that are tuned by one. */
     resolutions: Object.freeze(['512', '1K', '1.5K', '2K', '3K', '4K']),
-    /** Complexity tiers a model understands. */
+    /** The quality tiers of a picture model. */
+    qualities: Object.freeze(['auto', 'low', 'medium', 'high', 'xhigh', 'max']),
+    /** The deprecated tiers of `image.complexity` — the old name of `image.quality`. */
     complexities: Object.freeze(['auto', 'low', 'medium', 'high']),
     /** Reasoning effort levels a text model may take. */
     reasoningEfforts: Object.freeze(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']),

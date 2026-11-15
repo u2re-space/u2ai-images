@@ -106,13 +106,29 @@ test('the flags of the configuration only carry what was given', () => {
 });
 
 test('the reasoning of the run is a flag of the command', () => {
-    const options = parseArgv(['process', 'a cat', '--effort', 'low', '--complexity', 'medium']);
+    const options = parseArgv(['process', 'a cat', '--effort', 'low', '--quality', 'medium']);
     assert.equal(options.effort, 'low');
-    assert.equal(options.complexity, 'medium');
+    assert.equal(options.quality, 'medium');
     assert.equal(options.summary, null);
     const overrides = configOverrides(options);
     assert.deepEqual(overrides.reasoning, { effort: 'low' });
-    assert.deepEqual(overrides.image, { complexity: 'medium' });
+    assert.deepEqual(overrides.image, { quality: 'medium' });
+});
+
+test('the old name of the quality writes the new field', () => {
+    const options = parseArgv(['generate', 'x', '--complexity', 'medium']);
+    assert.equal(options.complexity, 'medium');
+    assert.deepEqual(configOverrides(options), { image: { quality: 'medium' } });
+});
+
+test('the numbers of the picture are read as numbers', () => {
+    const options = parseArgv([
+        'generate', 'x', '--seed', '42', '--compression', '80', '--frames', '6', '--frame-duration', '150',
+    ]);
+    assert.equal(options.seed, '42');
+    assert.deepEqual(configOverrides(options), {
+        image: { seed: 42, outputCompression: 80, frameCount: 6, frameDurationMs: 150 },
+    });
 });
 
 test('the help and the version end with the code 0', async () => {

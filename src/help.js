@@ -81,15 +81,23 @@ Generation options:
                          high | xhigh | max (high by default; the level is pulled down to what
                          the model of the request really takes).
       --summary <mode>   The summary of the reasoning: auto | concise | detailed (none by default).
-      --complexity <tier>  The complexity tier of the picture: auto | low | medium | high
-                         (auto by default — the tier of the model: high for gpt-image-2.6 and
-                         riverflow, nothing for the models that know no such field).
+      --quality <tier>   The quality tier of the picture: auto | low | medium | high | xhigh | max
+                         (auto by default — the tier of the model: high for gpt-image-2.6, nothing
+                         for the models that know no such field; the tier is pulled down to the
+                         ladder of the model).
+      --complexity <tier>  The old name of --quality.
       --purpose <name>  Purpose: decompose | generate | edit | remove_background | upscale |
                         unrotate (aliases: isolate, isolate_object, rectify).
       --size <WxH>      Frame of the picture.
       --resolution <tier>  Resolution tier: 512 | 1K | 1.5K | 2K | 3K | 4K.
-      --format <fmt>    Output format: png | jpeg | webp | svg.
+      --format <fmt>    Output format: png | jpeg | webp | gif | svg.
       --background <b>  Background: auto | opaque | transparent.
+      --seed <n>        The seed that makes the answer repeatable (the models that keep it).
+      --compression <n>  The degree of the compression of a jpeg or a webp: 0..100.
+      --frames <n>      The frames of an animated GIF: 2..16.
+      --frame-duration <ms>  The duration of one frame of an animated GIF: 20..2000.
+      --mask <file>     The mask of the area to repaint: a PNG with an alpha channel, of the
+                         size of the source. It needs a source picture (--image or an edit).
   -n, --count <n>       How many pictures to make.
       --reference <file>  An extra reference for an edit (repeatable).
       --image <file>    A reference picture for a generation or a decoration.

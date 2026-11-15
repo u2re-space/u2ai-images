@@ -57,7 +57,8 @@ test('the reasoning of the run is checked field by field', () => {
     assert.equal(config.reasoning.effort, 'high', 'the run thinks hard by default');
     assert.equal(config.reasoning.summary, null);
     assert.equal(config.roles.default.effort, null, 'the roles inherit the effort of the run');
-    assert.equal(config.image.complexity, 'auto', 'the picture takes the tier of its model');
+    assert.equal(config.image.quality, 'auto', 'the picture takes the tier of its model');
+    assert.equal(config.image.complexity, 'auto', 'the old name of the tier is still read');
 
     assert.throws(
         () => validateConfig({ ...config, reasoning: { ...config.reasoning, effort: 'ultra' } }),
@@ -82,6 +83,49 @@ test('the reasoning of the run is checked field by field', () => {
         }),
         /image\.complexity/,
     );
+    assert.throws(
+        () => validateConfig({
+            ...config,
+            image: { ...config.image, quality: 'titanic' },
+        }),
+        /image\.quality/,
+    );
+});
+
+test('the knobs of the picture are checked field by field', () => {
+    const config = structuredClone(defaults);
+    assert.throws(
+        () => validateConfig({ ...config, image: { ...config.image, seed: -1 } }),
+        /image\.seed/,
+    );
+    assert.throws(
+        () => validateConfig({ ...config, image: { ...config.image, outputCompression: 101 } }),
+        /image\.outputCompression/,
+    );
+    assert.throws(
+        () => validateConfig({ ...config, image: { ...config.image, frameCount: 1 } }),
+        /image\.frameCount/,
+    );
+    assert.throws(
+        () => validateConfig({ ...config, image: { ...config.image, frameDurationMs: 10 } }),
+        /image\.frameDurationMs/,
+    );
+    assert.throws(
+        () => validateConfig({ ...config, image: { ...config.image, mask: '' } }),
+        /image\.mask/,
+    );
+    assert.doesNotThrow(() => validateConfig({
+        ...config,
+        image: {
+            ...config.image,
+            quality: 'max',
+            seed: 7,
+            outputCompression: 80,
+            frameCount: 4,
+            frameDurationMs: 100,
+            mask: 'mask.png',
+        },
+    }));
 });
 
 test('the reasoning of the run comes from the environment', async () => {
@@ -91,13 +135,36 @@ test('the reasoning of the run comes from the environment', async () => {
             env: cleanEnv(home, {
                 AI_IMAGE_EFFORT: 'low',
                 AI_IMAGE_SUMMARY: 'concise',
-                AI_IMAGE_IMAGE_COMPLEXITY: 'medium',
+                AI_IMAGE_IMAGE_QUALITY: 'medium',
             }),
             ensureHome: false,
         });
         assert.equal(config.reasoning.effort, 'low');
         assert.equal(config.reasoning.summary, 'concise');
-        assert.equal(config.image.complexity, 'medium');
+        assert.equal(config.image.quality, 'medium');
+    } finally {
+        await rm(home, { recursive: true, force: true });
+    }
+});
+
+test('the numbers of the picture come from the environment', async () => {
+    const home = await homeDir();
+    try {
+        const config = await loadConfig({
+            env: cleanEnv(home, {
+                AI_IMAGE_IMAGE_SEED: '42',
+                AI_IMAGE_IMAGE_COMPRESSION: '80',
+                AI_IMAGE_IMAGE_FRAME_COUNT: '6',
+                AI_IMAGE_IMAGE_FRAME_DURATION_MS: '150',
+                AI_IMAGE_IMAGE_MASK: 'mask.png',
+            }),
+            ensureHome: false,
+        });
+        assert.equal(config.image.seed, 42);
+        assert.equal(config.image.outputCompression, 80);
+        assert.equal(config.image.frameCount, 6);
+        assert.equal(config.image.frameDurationMs, 150);
+        assert.equal(config.image.mask, 'mask.png');
     } finally {
         await rm(home, { recursive: true, force: true });
     }

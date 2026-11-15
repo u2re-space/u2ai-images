@@ -15,6 +15,7 @@ import {
     MIN_IMAGE_PIXELS,
     imageModelFamily,
     imageModelProfile,
+    snapQuality,
 } from '../src/model/profiles.js';
 import { TEXT_MODEL_PROFILES, textModelProfile, snapEffort } from '../src/model/text.js';
 import { fallbackChain, fallbackModels, modelFallback } from '../src/model/fallback.js';
@@ -24,7 +25,7 @@ test('the profile of a known family is merged over the default', () => {
     const gpt = imageModelProfile('openai/gpt-image-2.6-sunburst');
     assert.equal(gpt.customSizes, true);
     assert.equal(gpt.div16Padding, true);
-    assert.equal(gpt.complexity, 'high');
+    assert.equal(gpt.quality, 'high');
     assert.equal(gpt.minPixels, DEFAULT_PROFILE.minPixels);
 
     const river = imageModelProfile('sourceful/riverflow-v2.6-pro');
@@ -32,6 +33,32 @@ test('the profile of a known family is merged over the default', () => {
     assert.equal(river.resolutionTiers, true);
     assert.equal(river.maxRatio, 16);
     assert.equal(river.minPixels, 16_384);
+});
+
+test('the capabilities of the models are the ones of the catalog of the gateway', () => {
+    const gpt = imageModelProfile('openai/gpt-image-2.6-sunburst');
+    assert.equal(gpt.maxImages, 10, 'gpt-image carries up to ten pictures in one request');
+    assert.equal(gpt.gif, true, 'the animated GIF is the field of gpt-image-2.6');
+    assert.equal(gpt.outputCompression, true);
+    assert.equal(gpt.mask, true, 'the mask of the area to repaint');
+    assert.equal(gpt.seed, false, 'the catalog says gpt-image-2.6 keeps no seed');
+
+    const seedream = imageModelProfile('bytedance-seed/seedream-5-5');
+    assert.equal(seedream.seed, true, 'the catalog says seedream keeps the seed');
+    assert.equal(seedream.maxImages, 1, 'seedream answers with one picture');
+    assert.equal(seedream.quality, null, 'seedream knows no quality field');
+    assert.deepEqual(seedream.resolutions, ['1K', '1.5K', '2K']);
+    assert.ok(seedream.aspectRatios.includes('9:19.5'), 'the cinema shapes of the vendor');
+});
+
+test('a quality is pulled down to the ladder of the model', () => {
+    const gpt = imageModelProfile('openai/gpt-image-2.6-sunburst');
+    assert.equal(snapQuality('high', gpt), 'high');
+    assert.equal(snapQuality('max', gpt), 'max');
+    assert.equal(snapQuality('auto', gpt), 'high', 'auto means the tier of the model');
+    assert.equal(snapQuality('ultra', gpt), 'high', 'a level that is not on the ladder is not sent');
+    const seedream = imageModelProfile('bytedance-seed/seedream-5-5');
+    assert.equal(snapQuality('high', seedream), null, 'the model knows no quality field');
 });
 
 test('an unknown model gets the plain profile', () => {
@@ -94,6 +121,12 @@ test('a text model has a ceiling and a ladder of the efforts', () => {
     assert.equal(kimi.window, 1_000_000);
     assert.equal(kimi.maxOutput, 944_000);
     assert.ok(kimi.efforts.includes('none'), 'kimi takes the reasoning off without a refusal');
+    // Gemini 4 Hydrogen: the levels of the effort are the four of the card of the vendor.
+    const gemini = TEXT_MODEL_PROFILES['google/gemini-4-hydrogen'];
+    assert.equal(gemini.ceiling, 'xhigh');
+    assert.equal(gemini.window, 1_048_576);
+    assert.equal(gemini.maxOutput, 1_048_576);
+    assert.deepEqual(gemini.efforts, ['low', 'medium', 'high', 'xhigh']);
     // A model the table does not know works in the middle of the ladder.
     const unknown = textModelProfile('who/knows');
     assert.equal(unknown.ceiling, 'medium');
@@ -121,4 +154,9 @@ test('an effort is pulled down to what the model takes', () => {
     const kimi = textModelProfile('moonshotai/kimi-k3.1-pro');
     assert.equal(snapEffort('high', kimi), 'medium');
     assert.equal(snapEffort('none', kimi), 'none');
+    // Gemini takes the four levels of its card; the reasoning off is raised to `low`.
+    const gemini = textModelProfile('google/gemini-4-hydrogen');
+    assert.equal(snapEffort('xhigh', gemini), 'xhigh');
+    assert.equal(snapEffort('max', gemini), 'xhigh', 'the ceiling of the model wins');
+    assert.equal(snapEffort('none', gemini), 'low');
 });

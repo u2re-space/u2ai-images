@@ -29,8 +29,8 @@ import {
     backgroundValue,
     encodeMultipart,
     generationBody,
-    imageComplexityValue,
     imageFormatField,
+    imageQualityValue,
     imageSources,
     isSvgRequest,
     normalizeVectorRatio,
@@ -76,6 +76,27 @@ const HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
 const textOf = (value) => (typeof value === 'string' ? value : '');
 const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/**
+ * The quality tier of a picture request.
+ *
+ * The caller's value wins; then the configured one; then the deprecated `image.complexity`,
+ * which the older builds used instead of `image.quality`. `auto` means the tier of the model
+ * itself — the tier is cut down to the ladder of the model later, in `snapQuality`.
+ * @param {string|null|undefined} requested
+ * @param {object|null|undefined} config
+ * @returns {string}
+ * @ai.hint pure
+ */
+function qualityOf(requested, config) {
+    const asked = String(requested ?? '').trim();
+    if (asked) return asked;
+    const configured = String(config?.image?.quality ?? '').trim();
+    if (configured && configured !== 'auto') return configured;
+    const legacy = String(config?.image?.complexity ?? '').trim();
+    if (legacy && legacy !== 'auto') return legacy;
+    return configured || 'auto';
+}
 
 /**
  * Normalize a base URL and require a path that ends with `/`.
@@ -1026,9 +1047,11 @@ export async function createClient({ config, env = process.env, signal = null, o
      * @returns {Promise<{ payloads: string[], route: string, raw: object }>}
      * @ai.hint io
      */
-    async function generateOnce({ model, prompt, size, complexity, n, format, background, references, resolution, signal: callSignal }) {
+    async function generateOnce({ model, prompt, size, quality, n, format, background, references, resolution,
+        seed, compression, frameCount, frameDurationMs, mask, signal: callSignal }) {
         const body = generationBody({
-            model, prompt, size, complexity, n, format, background, references, resolution, sizeHint: sizeHintMode,
+            model, prompt, size, quality, n, format, background, references, resolution, sizeHint: sizeHintMode,
+            seed, compression, frameCount, frameDurationMs, mask,
         });
         // A host that was asked before and did not serve the route is not asked again: the
         // request goes to the Responses API right away.
@@ -1051,12 +1074,21 @@ export async function createClient({ config, env = process.env, signal = null, o
 
     /**
      * Edit a picture: one attempt of one model.
+     *
+     * The mask travels as its own file of the multipart request: the field `mask` names the area
+     * of the source that is repainted, the transparent pixels of the PNG mark it.
      * @param {object} params
      * @returns {Promise<{ payloads: string[], route: string, raw: object }>}
      * @ai.hint io
      */
-    async function editOnce({ model, prompt, fields, files, signal: callSignal }) {
-        const form = encodeMultipart({ fields, files });
+    async function editOnce({ model, prompt, fields, files, mask = null, signal: callSignal }) {
+        const form = encodeMultipart({
+            fields,
+            files: [
+                ...files.map((file) => ({ ...file, field: 'image' })),
+                ...(mask ? [{ ...mask, field: 'mask' }] : []),
+            ],
+        });
         const imageHosts = poolFor('images').candidates({ model, route: 'images' });
         if (imageHosts.length) {
             try {
@@ -1211,20 +1243,32 @@ export async function createClient({ config, env = process.env, signal = null, o
         images: {
             /**
              * Generate a picture.
+             *
+             * A model that takes one picture per request (seedream, riverflow) is asked as many
+             * times as the caller wants pictures: the count of the request is cut into the pieces
+             * the model accepts, and the answers are put together.
              * @param {{ model?: string|null, purpose?: string|null, prompt: string, size?: string|null,
-             *   complexity?: string|null, n?: number|null, format?: string|null, background?: string|null,
-             *   references?: string[]|null, resolution?: string|null, signal?: AbortSignal|null }} params
+             *   quality?: string|null, n?: number|null, format?: string|null, background?: string|null,
+             *   references?: string[]|null, resolution?: string|null, seed?: number|null,
+             *   compression?: number|null, frameCount?: number|null, frameDurationMs?: number|null,
+             *   mask?: string|null, signal?: AbortSignal|null }} params
              * @returns {Promise<{ images: Array<{bytes: Buffer, mime: string}>, payloads: string[], model: string, route: string }>}
              */
             async generate({
-                model = null, purpose = null, prompt, size = null, complexity = null, n = null, format = null,
-                background = null, references = null, resolution = null, signal: callSignal = null,
+                model = null, purpose = null, prompt, size = null, quality = null, n = null, format = null,
+                background = null, references = null, resolution = null, seed = null, compression = null,
+                frameCount = null, frameDurationMs = null, mask = null, signal: callSignal = null,
             } = {}) {
                 const usedModel = resolveModel({ model, purpose });
                 if (!usedModel) throw new ApiError('No image model is configured.', { code: 'NO_MODEL' });
-                // The tier of the request: the caller's value, then the configured one, then the
-                // tier of the model itself. A model that knows no such field gets nothing.
-                const tier = complexity ?? config?.image?.complexity ?? null;
+                // The quality of the request: the caller's value, then the configured one, then the
+                // quality of the model itself. A model that knows no such field gets nothing.
+                const level = qualityOf(quality, config);
+                const profile = imageModelProfile(usedModel);
+                // How many pictures the caller wants, and how many of them one request may carry.
+                const wanted = Number.isSafeInteger(n) && n > 0 ? n : 1;
+                const perCall = Math.max(1, profile.maxImages ?? 1);
+                const calls = Math.ceil(wanted / perCall);
                 const vector = isSvgRequest({ model: usedModel, format });
                 const attempts = vector ? [] : imageSizeAttempts(size, usedModel, resolution);
                 const chain = modelChain(usedModel);
@@ -1232,7 +1276,8 @@ export async function createClient({ config, env = process.env, signal = null, o
                 // the same name, so the answer of the first phase serves the second one.
                 const hash = journal ? journal.hash({
                     kind: 'images.generate',
-                    model: usedModel, prompt, size, complexity: tier, n, format, background, references, resolution,
+                    model: usedModel, prompt, size, quality: level, n: wanted, format, background, references,
+                    resolution, seed, compression, frameCount, frameDurationMs, mask,
                 }) : null;
                 if (hash) {
                     const cached = await journal.read(hash);
@@ -1252,41 +1297,60 @@ export async function createClient({ config, env = process.env, signal = null, o
                     }
                 }
                 let lastError = null;
-                for (const candidate of chain) {
-                    for (let index = 0; ; index++) {
-                        const requestedSize = index < attempts.length ? attempts[index] : size;
-                        try {
-                            const answer = await generateOnce({
-                                model: candidate, prompt, size: requestedSize, complexity: tier, n, format,
-                                background, references, resolution, signal: callSignal,
-                            });
-                            const adapter = await rasterAdapter();
-                            // A vector answer is a document: it is never resampled to the asked frame.
-                            const payloads = vector
-                                ? answer.payloads
-                                : await fitPayloads(answer.payloads, size, adapter);
-                            if (hash) await journal.writeJson(hash, payloads);
-                            return {
-                                images: payloads.map((payload) => {
-                                    const bytes = Buffer.from(payload, 'base64');
-                                    return { bytes, mime: sniffImage(bytes).mime };
-                                }),
-                                payloads,
-                                model: candidate,
-                                route: answer.route,
-                                raw: answer.raw,
-                            };
-                        } catch (error) {
-                            lastError = error;
-                            // Another frame is asked only when the host refused the frame.
-                            if (isImageSizeError(error) && index < attempts.length - 1) continue;
-                            // Another model is asked only when the host does not know this one.
-                            if (isModelUnknown(error)) break;
-                            throw error;
+                const collected = [];
+                let answeredBy = usedModel;
+                let route = 'images/generations';
+                let raw = null;
+                for (let chunk = 0; chunk < calls; chunk++) {
+                    const chunkCount = Math.min(perCall, wanted - collected.length);
+                    let answered = false;
+                    for (const candidate of chain) {
+                        for (let index = 0; ; index++) {
+                            const requestedSize = index < attempts.length ? attempts[index] : size;
+                            try {
+                                const answer = await generateOnce({
+                                    model: candidate, prompt, size: requestedSize, quality: level, n: chunkCount, format,
+                                    background, references, resolution, seed, compression, frameCount, frameDurationMs,
+                                    mask, signal: callSignal,
+                                });
+                                const adapter = await rasterAdapter();
+                                // A vector answer is a document: it is never resampled to the asked frame.
+                                const payloads = vector
+                                    ? answer.payloads
+                                    : await fitPayloads(answer.payloads, size, adapter);
+                                collected.push(...payloads);
+                                answeredBy = candidate;
+                                route = answer.route;
+                                raw = answer.raw;
+                                answered = true;
+                                break;
+                            } catch (error) {
+                                lastError = error;
+                                // Another frame is asked only when the host refused the frame.
+                                if (isImageSizeError(error) && index < attempts.length - 1) continue;
+                                // Another model is asked only when the host does not know this one.
+                                if (isModelUnknown(error)) break;
+                                throw error;
+                            }
                         }
+                        if (answered) break;
                     }
+                    if (!answered) {
+                        throw lastError ?? new ApiError('No model answered the request.', { code: 'NO_MODEL' });
+                    }
+                    if (collected.length >= wanted) break;
                 }
-                throw lastError ?? new ApiError('No model answered the request.', { code: 'NO_MODEL' });
+                if (hash) await journal.writeJson(hash, collected);
+                return {
+                    images: collected.map((payload) => {
+                        const bytes = Buffer.from(payload, 'base64');
+                        return { bytes, mime: sniffImage(bytes).mime };
+                    }),
+                    payloads: collected,
+                    model: answeredBy,
+                    route,
+                    raw,
+                };
             },
 
             /**
@@ -1297,23 +1361,28 @@ export async function createClient({ config, env = process.env, signal = null, o
              * scale and position), and the padding is cut off the answer. A frame the model
              * answers with a bigger picture than asked for is scaled down afterwards.
              * @param {{ model?: string|null, purpose?: string|null, prompt: string, files: object[], size?: string|null,
-             *   complexity?: string|null, n?: number|null, format?: string|null, background?: string|null,
-             *   resolution?: string|null, signal?: AbortSignal|null }} params
+             *   quality?: string|null, n?: number|null, format?: string|null, background?: string|null,
+             *   resolution?: string|null, seed?: number|null, compression?: number|null,
+             *   frameCount?: number|null, frameDurationMs?: number|null, mask?: object|null,
+             *   signal?: AbortSignal|null }} params
              * @returns {Promise<{ images: Array<{bytes: Buffer, mime: string}>, payloads: string[], model: string, route: string }>}
              */
             async edit({
-                model = null, purpose = null, prompt, files = [], size = null, complexity = null, n = null,
-                format = null, background = null, resolution = null, signal: callSignal = null,
+                model = null, purpose = null, prompt, files = [], size = null, quality = null, n = null,
+                format = null, background = null, resolution = null, seed = null, compression = null,
+                frameCount = null, frameDurationMs = null, mask = null, signal: callSignal = null,
             } = {}) {
                 const usedModel = resolveModel({ model, purpose });
                 if (!usedModel) throw new ApiError('No image model is configured.', { code: 'NO_MODEL' });
                 if (!files.length) throw new ApiError('The edit needs at least one source picture.', { code: 'INVALID_REQUEST' });
-                // The tier of the request: the caller's value, then the configured one, then the
-                // tier of the model itself. A model that knows no such field gets nothing.
-                const tier = complexity ?? config?.image?.complexity ?? null;
+                // The quality of the request: the caller's value, then the configured one, then the
+                // quality of the model itself. A model that knows no such field gets nothing.
+                const level = qualityOf(quality, config);
                 const vector = isSvgRequest({ model: usedModel, format });
                 const adapter = await rasterAdapter();
                 const profile = imageModelProfile(usedModel);
+                // The mask of the area to repaint: only the models that take it get one.
+                const maskFile = profile.mask && mask?.bytes?.length ? mask : null;
 
                 // The frame of the request, or the frame of the source when the request names none.
                 const sourceFrame = files[0]?.bytes ? readImageSizeSafe(Buffer.from(files[0].bytes)) : null;
@@ -1379,11 +1448,16 @@ export async function createClient({ config, env = process.env, signal = null, o
                     model: usedModel,
                     prompt: text,
                     size,
-                    complexity: tier,
+                    quality: level,
                     n,
                     format,
                     background,
                     resolution,
+                    seed,
+                    compression,
+                    frameCount,
+                    frameDurationMs,
+                    mask: maskFile ? journal.hashBytes(maskFile.bytes) : null,
                     files: files.map((file) => journal.hashBytes(file?.bytes ?? Buffer.alloc(0))),
                 }) : null;
                 if (hash) {
@@ -1411,11 +1485,13 @@ export async function createClient({ config, env = process.env, signal = null, o
                         try {
                             const fields = buildEditFields({
                                 model: candidate, prompt: text, size: attemptSize, format, background,
-                                complexity: tier, n, resolution, vector, sizeHint: sizeHintMode,
+                                quality: level, n, resolution, vector, sizeHint: sizeHintMode,
+                                seed, compression, frameCount, frameDurationMs,
                             });
                             const answer = await editOnce({
                                 model: candidate, prompt: text, fields,
-                                files: requestFiles.map((file) => ({ ...file, field: 'image' })),
+                                files: requestFiles,
+                                mask: maskFile,
                                 signal: callSignal,
                             });
                             let payloads = answer.payloads;
@@ -1535,16 +1611,19 @@ export async function createClient({ config, env = process.env, signal = null, o
  * A vector call carries its frame verbatim (there is no raster to pad and the document is cut
  * by its own geometry); a raster call carries the fields of the ladder of the model.
  * @param {{ model: string, prompt: string, size?: string|null, format?: string|null, background?: string|null,
- *   complexity?: string|null, n?: number|null, resolution?: string|null, vector?: boolean }} params
+ *   quality?: string|null, n?: number|null, resolution?: string|null, vector?: boolean,
+ *   seed?: number|null, compression?: number|null, frameCount?: number|null, frameDurationMs?: number|null }} params
  * @returns {object}
  * @ai.hint pure
  */
 export function buildEditFields({ model, prompt, size = null, format = null, background = null,
-    complexity = null, n = null, resolution = null, vector = false, sizeHint = 'auto' } = {}) {
+    quality = null, n = null, resolution = null, vector = false, sizeHint = 'auto',
+    seed = null, compression = null, frameCount = null, frameDurationMs = null } = {}) {
     const fields = { model, prompt };
+    const profile = imageModelProfile(model);
     if (vector) {
         const asked = String(size ?? '').trim();
-        if (imageModelProfile(model).customSizes && /^\d+\s*x\s*\d+$/.test(asked)) {
+        if (profile.customSizes && /^\d+\s*x\s*\d+$/.test(asked)) {
             fields.size = sameAspectImageSize(asked.replace(/\s+/g, ''), model) || asked.replace(/\s+/g, '');
         } else {
             const aspect = normalizeVectorRatio(asked);
@@ -1563,9 +1642,23 @@ export function buildEditFields({ model, prompt, size = null, format = null, bac
     if (fmt) fields[imageFormatField(model)] = fmt;
     const backgroundField = backgroundValue({ model, format: fmt, background });
     if (backgroundField) fields.background = backgroundField;
-    const cx = imageComplexityValue({ model, complexity });
-    if (cx) fields.complexity = cx;
-    if (Number.isInteger(n) && n > 1) fields.n = n;
+    const level = imageQualityValue({ model, quality });
+    if (level) fields.quality = level;
+    if (Number.isInteger(n) && n > 1) {
+        fields.n = Math.min(n, Math.max(1, profile.maxImages ?? 1));
+    }
+    // The seed makes the answer repeatable — only the models that keep it.
+    if (profile.seed && Number.isSafeInteger(seed) && seed >= 0) fields.seed = seed;
+    // The degree of compression of a jpeg or a webp.
+    if (profile.outputCompression && Number.isSafeInteger(compression) && compression >= 0 && compression <= 100
+        && (fmt === 'jpeg' || fmt === 'webp')) fields.output_compression = compression;
+    // The frames of an animated GIF.
+    if (profile.gif && fmt === 'gif') {
+        if (Number.isSafeInteger(frameCount) && frameCount >= 2 && frameCount <= 16) fields.frame_count = frameCount;
+        if (Number.isSafeInteger(frameDurationMs) && frameDurationMs >= 20 && frameDurationMs <= 2000) {
+            fields.frame_duration_ms = frameDurationMs;
+        }
+    }
     fields.prompt = withSizeHint(prompt, fields, model, sizeHint);
     return fields;
 }

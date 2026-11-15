@@ -5,13 +5,14 @@
  *          format, the engine and the client.
  * @depends node:path, openai/client
  * @usedBy commands/*
- * @exports usageError, numberOption, pictureFormat, outputTarget, engineOf, localTarget,
- *          batchSetup, createCommandClient, describeEvent, reportPlan, reportResult
+ * @exports usageError, numberOption, pictureFormat, pictureQuality, outputTarget, engineOf,
+ *          localTarget, batchSetup, createCommandClient, describeEvent, reportPlan, reportResult
  * @ai.tags cli, commands
  * @ai.hint keep
  */
 
 import path from 'node:path';
+import { ENUMS } from '../config/constants.js';
 import { createClient } from '../openai/client.js';
 import { createJournal } from '../openai/journal.js';
 import { ApiError } from '../openai/errors.js';
@@ -52,15 +53,37 @@ export function numberOption(value, name, { min = null, max = null, integer = tr
 /**
  * The format of the written file.
  * @param {{ options: object, config?: object|null }} ctx
- * @returns {string} `png`, `jpeg`, `webp` or `svg`
+ * @returns {string} `png`, `jpeg`, `webp`, `gif` or `svg`
  * @exports
  * @ai.hint pure
  */
 export function pictureFormat({ options, config = null }) {
     const value = String(options.format ?? config?.image?.format ?? 'png').trim().toLowerCase();
     if (value === 'jpg') return 'jpeg';
-    if (!['png', 'jpeg', 'webp', 'svg'].includes(value)) {
-        throw usageError(`The format must be one of: png, jpeg, webp, svg. Got "${value}".`);
+    if (!['png', 'jpeg', 'webp', 'gif', 'svg'].includes(value)) {
+        throw usageError(`The format must be one of: png, jpeg, webp, gif, svg. Got "${value}".`);
+    }
+    return value;
+}
+
+/**
+ * The quality tier of the picture.
+ *
+ * The flag of the command wins; then the configuration; then the deprecated `image.complexity`.
+ * `auto` means the tier of the model itself — the tier is cut down to the ladder of the model
+ * later, in the client.
+ * @param {{ options: object, config?: object|null }} ctx
+ * @returns {string}
+ * @exports
+ * @ai.hint pure
+ */
+export function pictureQuality({ options, config = null }) {
+    const asked = String(options.quality ?? options.complexity ?? '').trim().toLowerCase();
+    const configured = String(config?.image?.quality ?? '').trim().toLowerCase();
+    const legacy = String(config?.image?.complexity ?? '').trim().toLowerCase();
+    const value = asked || (configured && configured !== 'auto' ? configured : (legacy || 'auto'));
+    if (!ENUMS.qualities.includes(value)) {
+        throw usageError(`The quality must be one of: ${ENUMS.qualities.join(', ')}. Got "${value}".`);
     }
     return value;
 }

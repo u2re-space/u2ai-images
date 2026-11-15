@@ -86,6 +86,7 @@ export function fromEnv(env = process.env) {
 
     // --- picture knobs ----------------------------------------------------------
     set(['image', 'size'], env.AI_IMAGE_IMAGE_SIZE);
+    set(['image', 'quality'], env.AI_IMAGE_IMAGE_QUALITY);
     set(['image', 'complexity'], env.AI_IMAGE_IMAGE_COMPLEXITY);
     set(['image', 'resolution'], env.AI_IMAGE_IMAGE_RESOLUTION);
     set(['image', 'format'], env.AI_IMAGE_IMAGE_FORMAT);
@@ -96,6 +97,15 @@ export function fromEnv(env = process.env) {
     set(['image', 'alphaMode'], env.AI_IMAGE_ALPHA_MODE);
     set(['image', 'rasterEngine'], env.AI_IMAGE_RASTER_ENGINE);
     set(['image', 'magickPath'], env.AI_IMAGE_MAGICK_PATH);
+    set(['image', 'mask'], env.AI_IMAGE_IMAGE_MASK);
+    const seed = intInRange(env.AI_IMAGE_IMAGE_SEED, 0, Number.MAX_SAFE_INTEGER);
+    if (seed != null) set(['image', 'seed'], seed);
+    const compression = intInRange(env.AI_IMAGE_IMAGE_COMPRESSION, 0, 100);
+    if (compression != null) set(['image', 'outputCompression'], compression);
+    const frameCount = intInRange(env.AI_IMAGE_IMAGE_FRAME_COUNT, 2, 16);
+    if (frameCount != null) set(['image', 'frameCount'], frameCount);
+    const frameDurationMs = intInRange(env.AI_IMAGE_IMAGE_FRAME_DURATION_MS, 20, 2000);
+    if (frameDurationMs != null) set(['image', 'frameDurationMs'], frameDurationMs);
 
     // --- reasoning -------------------------------------------------------------------
     set(['reasoning', 'effort'], env.AI_IMAGE_EFFORT);

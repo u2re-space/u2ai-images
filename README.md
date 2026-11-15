@@ -156,7 +156,7 @@ through it) and the default picture model is `bytedance-seed/seedream-5-5`.
     "background": "auto",
     "outputDir": ".",
     "alphaMode": "auto",
-    "complexity": "auto"
+    "quality": "auto"
   },
   "reasoning": {
     "effort": "high"
@@ -205,7 +205,12 @@ The home directory holds:
 | `AI_IMAGE_BACKENDS` | The JSON list of the text backends. |
 | `AI_IMAGE_IMAGES_BACKENDS` | The JSON list of the picture backends. |
 | `AI_IMAGE_IMAGE_SIZE`, `AI_IMAGE_IMAGE_FORMAT`, `AI_IMAGE_IMAGE_BACKGROUND`, `AI_IMAGE_IMAGE_RESOLUTION` | The picture knobs. |
-| `AI_IMAGE_IMAGE_COMPLEXITY` | The complexity tier of the picture: `auto`, `low`, `medium`, `high`. |
+| `AI_IMAGE_IMAGE_QUALITY` | The quality tier of the picture: `auto`, `low`, `medium`, `high`, `xhigh`, `max`. |
+| `AI_IMAGE_IMAGE_COMPLEXITY` | The deprecated name of the quality tier. |
+| `AI_IMAGE_IMAGE_SEED` | The seed that makes the answer repeatable. |
+| `AI_IMAGE_IMAGE_COMPRESSION` | The degree of the compression of a jpeg or a webp: 0..100. |
+| `AI_IMAGE_IMAGE_FRAME_COUNT`, `AI_IMAGE_IMAGE_FRAME_DURATION_MS` | The frames of an animated GIF and the duration of one frame. |
+| `AI_IMAGE_IMAGE_MASK` | The mask picture of an edit: the area that is repainted. |
 | `AI_IMAGE_EFFORT`, `AI_IMAGE_SUMMARY` | The reasoning effort and the summary of the text requests. |
 | `AI_IMAGE_PURPOSE` | The default purpose. |
 | `AI_IMAGE_ALPHA_MODE` | The default alpha mode. |
@@ -241,6 +246,7 @@ model is never asked for a level it refuses:
 | Model | Context | Output | Ceiling | Ladder |
 |---|---|---|---|---|
 | `minimax/minimax-m3.1-flash` | 1M | 524K | `xhigh` | `low`, `medium`, `high`, `xhigh` |
+| `google/gemini-4-hydrogen` | 1M | 1M | `xhigh` | `low`, `medium`, `high`, `xhigh` |
 | `moonshotai/kimi-k3.1-pro` | 1M | 944K | `medium` | `none`, `low`, `medium` |
 
 Two facts of the live gateway shape the table. MiniMax refuses to work without reasoning
@@ -248,16 +254,53 @@ Two facts of the live gateway shape the table. MiniMax refuses to work without r
 is raised to `low` instead of being refused. Kimi takes the reasoning off without a refusal
 and answers in a fraction of the time (about 0.8 s against about 31 s at `medium` on the same
 question), so `none` stays on its ladder — pass `--effort none` when the answer matters more
-than the reasoning.
+than the reasoning. Gemini 4 Hydrogen names the four levels of its card (`low`, `medium`,
+`high`, `xhigh`) and decodes up to 1M tokens with the continuation, so `none` is raised to
+`low` there as well.
 
-The tier of the planning (`complexity`) is a field of the *picture* request, not of a text one:
-it belongs to the models that take it (`gpt-image-2.6`, `riverflow`, where it is `high`), and
-the models that know no such field (`seedream`) are asked without it. The knob is
-`image.complexity` (`auto` by default — the tier of the model) and the flag `--complexity`.
+The quality tier (`quality`) is a field of the *picture* request, not of a text one: it
+belongs to the models that take it (`gpt-image-2.6` and `gpt-image-2.5`, where it is `high`),
+and the models that know no such field (`seedream`, `riverflow`) are asked without it. The
+knob is `image.quality` (`auto` by default — the tier of the model) and the flag `--quality`;
+`--complexity` is the old name of the flag and still works.
 
 ```bash
 ai-image process "a cover for the release" --effort medium
 ai-image process "a cover for the release" --effort none --model moonshotai/kimi-k3.1-pro
+```
+
+## The picture knobs
+
+The API of the pictures is not one API: every family of the models has its own fields, its
+own menu of frames and its own menu of tiers. The package keeps that knowledge in the
+profiles of the models (`src/model/profiles.js`) and sends only the fields the model of the
+request really takes — the gateway drops what it does not serve, but a field that is there
+and wrong costs the whole request.
+
+| Knob | Field of the API | Who takes it |
+|---|---|---|
+| `--quality` | `quality` | `gpt-image-2.5`, `gpt-image-2.6` (`auto`, `low`, `medium`, `high`, `xhigh`, `max`) |
+| `--resolution` | `resolution` | `seedream` (`1K`, `1.5K`, `2K`), `riverflow` (`1K`, `2K`, `4K`) |
+| `--size` | `size` | every family with a free frame; a shape (`16:9`) becomes `aspect_ratio` |
+| `--seed` | `seed` | `seedream`, `flux`, `qwen-image`, `krea`, `hy-image` |
+| `--compression` | `output_compression` | `gpt-image-2.6` (a jpeg or a webp, 0..100) |
+| `--frames`, `--frame-duration` | `frame_count`, `frame_duration_ms` | `gpt-image-2.6` (a GIF, 2..16 frames, 20..2000 ms) |
+| `--mask` | `mask` | `gpt-image-*` (a PNG with an alpha channel; it needs a source picture) |
+
+The quality is pulled down to the ladder of the model, the tier is pulled down to the menu of
+the model (`4K` on the seedream becomes `2K`, or the request is refused by the vendor), and
+the shape is pulled down to the closest shape of the menu of the model (the seedream takes
+the cinema frames `9:19.5`, `9:20` and `9:21`, the gpt-image stops at `21:9`).
+
+The count of the pictures is cut to the ceiling of the model as well: a model that takes one
+picture per request (`seedream`, `riverflow`) is asked as many times as there are pictures
+wanted, and the answers are put together.
+
+```bash
+ai-image generate "a fox in the snow" --quality max --size 2048x2048
+ai-image generate "a spinning coin" --format gif --frames 8 --frame-duration 120
+ai-image generate "a lighthouse" --seed 42
+ai-image edit photo.png "make the sky stormy" --mask mask.png
 ```
 
 ## The providers

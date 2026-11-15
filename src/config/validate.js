@@ -185,7 +185,27 @@ export function validateConfig(config) {
     }
     if (!ENUMS.imageFormats.includes(c.image.format)) fail(`image.format: ${ENUMS.imageFormats.join(' | ')}`);
     if (!ENUMS.imageBackgrounds.includes(c.image.background)) fail(`image.background: ${ENUMS.imageBackgrounds.join(' | ')}`);
-    if (!ENUMS.complexities.includes(c.image.complexity)) fail(`image.complexity: ${ENUMS.complexities.join(' | ')}`);
+    if (!ENUMS.qualities.includes(c.image.quality)) fail(`image.quality: ${ENUMS.qualities.join(' | ')}`);
+    if (!ENUMS.complexities.includes(c.image.complexity)) {
+        fail(`image.complexity: ${ENUMS.complexities.join(' | ')} (поле устарело, берите image.quality)`);
+    }
+    if (c.image.seed !== null && !(Number.isSafeInteger(c.image.seed) && c.image.seed >= 0)) {
+        fail('image.seed: целое ≥ 0 или null');
+    }
+    if (c.image.outputCompression !== null
+        && !(Number.isSafeInteger(c.image.outputCompression) && c.image.outputCompression >= 0 && c.image.outputCompression <= 100)) {
+        fail('image.outputCompression: целое 0..100 или null');
+    }
+    if (c.image.frameCount !== null && !(Number.isSafeInteger(c.image.frameCount) && c.image.frameCount >= 2 && c.image.frameCount <= 16)) {
+        fail('image.frameCount: целое 2..16 или null');
+    }
+    if (c.image.frameDurationMs !== null
+        && !(Number.isSafeInteger(c.image.frameDurationMs) && c.image.frameDurationMs >= 20 && c.image.frameDurationMs <= 2000)) {
+        fail('image.frameDurationMs: целое 20..2000 или null');
+    }
+    if (c.image.mask !== null && (typeof c.image.mask !== 'string' || !c.image.mask.trim())) {
+        fail('image.mask: непустая строка или null');
+    }
     if (c.image.resolution !== null && !ENUMS.resolutions.includes(String(c.image.resolution))) {
         fail(`image.resolution: ${ENUMS.resolutions.join(' | ')}`);
     }

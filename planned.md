@@ -910,6 +910,71 @@ HTTP 200, ответ по json_schema.
 
 ---
 
+## 24. Параметры картинок по докам RouterAI (step-c10)
+
+Цель шага: картинка уходит в API с теми полями, которые её модель действительно понимает.
+Раньше поле `complexity` уходило в тело запроса, но в `POST /v1/images` такого поля нет —
+есть `quality`. Шлюз молча игнорирует неизвестые поля (HTTP 200), поэтому «200» ничего не
+доказывает: проверять приходится по фактическому размеру и содержимому ответа.
+
+Что выяснено из спецификации шлюза (`https://routerai.ru/api/openapi.json`, ноябрь 2026)
+и каталога `GET /v1/models`:
+
+| Поле | Кто принимает |
+|---|---|
+| `quality` | `gpt-image-2.5/2.6`: `auto`, `low`, `medium`, `high`, `xhigh`, `max` |
+| `resolution` | `seedream-5-5`: `1K`, `1.5K`, `2K`; `riverflow-v2.6-pro`: `1K`, `2K`, `4K` |
+| `aspect_ratio` | своё меню у каждой семьи: у seedream 18 форм + `auto` (включая `9:19.5`, `9:20`, `9:21`), у gpt-image — до `21:9` |
+| `seed` | только модели с `image_seed: true` (seedream, flux, qwen-image, krea, hy-image) |
+| `output_compression` | `gpt-image-2.6`, 0..100, только для jpeg/webp |
+| `frame_count` (2..16), `frame_duration_ms` (20..2000) | `gpt-image-2.6`, только для `output_format: gif` |
+| `mask` | только `openai/gpt-image-*`; на JSON-маршруте — `{image_url: {url}}`, на multipart — файл-поле `mask` |
+| `n` | потолок у каждой модели: `max_image_count` = 10 у gpt-image-2.6, 1 у seedream и riverflow |
+
+Живые пробы `/v1/images` (routerai): `quality=high` и `quality=max` → 200; `output_format=gif`
++ `frame_count=4` + `frame_duration_ms=100` → GIF89a; `output_format=jpeg` + `output_compression=50`
+→ JPEG; `seed=42` у seedream → 200; `resolution=1.5K` + `aspect_ratio=9:19.5` → 200;
+`resolution=4K` у seedream → 200 с телом-ошибкой «Accepted: 1K, 1.5K, 2K» (тир надо снапить
+к меню модели); `quality` у seedream → поле молча выброшено. Multipart `/v1/images/edits`
+с файлом `mask` → 200 и PNG в ответе.
+
+- [x] `src/model/profiles.js` — реестр возможностей: `quality`, `qualities`, `aspectRatios`,
+      `resolutions`, `seed`, `outputCompression`, `gif`, `mask`, `maxImages`; списки
+      `GPT_IMAGE_RATIOS`, `SEEDREAM_RATIOS`, `RIVERFLOW_RATIOS`, `SEEDREAM_RESOLUTIONS`,
+      `RIVERFLOW_RESOLUTIONS`; `snapQuality()` срезает уровень по лестнице модели.
+- [x] `src/image/sizing.js` — `supportedAspectRatios(model)` отдаёт меню самой модели,
+      `snapResolution()` срезает тир к меню модели, `nearestModelRatio()` ищет форму
+      по меню модели, а не по общему каталогу.
+- [x] `src/openai/images.js` — `imageQualityValue()` вместо `imageComplexityValue()`; тело
+      запроса несёт `quality`, `seed`, `output_compression`, `frame_count`, `frame_duration_ms`,
+      `mask`; `n` срезается потолком модели.
+- [x] `src/openai/client.js` — `images.generate` режет `n` на части по потолку модели и
+      собирает ответы; `images.edit` и `buildEditFields` получили `quality`, `seed`,
+      сжатие, gif-поля и маску (файлом multipart с полем `mask`).
+- [x] Конфиг: `image.quality` (новое), `image.complexity` (устаревшее имя, читается, когда
+      `quality` = `auto`), `image.seed`, `image.outputCompression`, `image.frameCount`,
+      `image.frameDurationMs`, `image.mask`; валидация по-русски; env
+      `AI_IMAGE_IMAGE_QUALITY`, `AI_IMAGE_IMAGE_SEED`, `AI_IMAGE_IMAGE_COMPRESSION`,
+      `AI_IMAGE_IMAGE_FRAME_COUNT`, `AI_IMAGE_IMAGE_FRAME_DURATION_MS`, `AI_IMAGE_IMAGE_MASK`.
+- [x] CLI: `--quality` (`--complexity` — его старый имя), `--seed`, `--compression`,
+      `--frames`, `--frame-duration`, `--mask`; формат `gif` добавлен в список форматов.
+- [x] Команды `generate` и `edit` передают новые поля в клиент и показывают их в плане
+      (`--dry-run`); маска требует исходной картинки.
+- [x] Профиль текстовой модели `google/gemini-4-hydrogen`: контекст 1M, выход 1M,
+      потолок `xhigh`, лестница `low|medium|high|xhigh` (уровня `none` у карточки нет).
+- [x] Тесты: профили и возможности, качество и его срез, тиры и формы, тело запроса
+      (seed/compression/gif/mask/n), клиент (качество, старое имя, поштучная генерация),
+      валидация и env, флаги CLI.
+- [x] README (EN), planned.md (RU).
+- [x] Проверка: `npm run check` — 115/115 файлов; `npm test` — 211 тест, 210 проходят,
+      1 пропущен, 0 падений.
+
+Живая проверка собранного пакета: тело `generationBody` с `quality`, `seed`, gif-полями и
+`output_compression` принимается шлюзом (200, в ответе PNG, GIF89a и JPEG соответственно);
+multipart-правка с файлом `mask` — 200 и PNG.
+
+---
+
 ## Порядок работы и зависимости шагов
 
 ```

@@ -47,8 +47,8 @@ export const defaults = {
      * its own effort (`roles.<role>.effort`) works at its own level instead. The level is
      * pulled down to what the model of the request really takes (`src/model/text.js`).
      *
-     * The tier of the planning (`complexity`) is not a field of a text request: it belongs to
-     * the picture models, and it lives in `image.complexity`.
+     * The tier of the planning (`quality`) is not a field of a text request: it belongs to
+     * the picture models, and it lives in `image.quality`.
      */
     reasoning: {
         /** The reasoning effort of the text requests of the run. */
@@ -116,7 +116,21 @@ export const defaults = {
     image: {
         /** Frame of the picture: a preset, a free WIDTHxHEIGHT or auto. */
         size: 'auto',
-        /** Complexity tier the model understands. */
+        /**
+         * The quality tier of the picture.
+         *
+         * The field of the API is `quality` — the tier of the planning of the models of OpenAI
+         * (`low`, `medium`, `high`, `xhigh`, `max`). `auto` means the tier of the model itself:
+         * the tier is cut down to the ladder of the model, so a request for `max` on a model that
+         * stops at `high` goes out as `high`.
+         */
+        quality: 'auto',
+        /**
+         * The deprecated name of `quality`.
+         *
+         * The older builds wrote the tier of the planning into `image.complexity`; the field is
+         * still read when `quality` is left at `auto`, so the old configuration keeps working.
+         */
         complexity: 'auto',
         /** Format of the written file. */
         format: 'png',
@@ -124,6 +138,16 @@ export const defaults = {
         background: 'auto',
         /** Resolution tier of the families that are tuned by one. */
         resolution: null,
+        /** The seed that makes the answer repeatable; null asks for a fresh one. */
+        seed: null,
+        /** The degree of the compression of a jpeg or a webp, 0..100. */
+        outputCompression: null,
+        /** The frames of an animated GIF, 2..16. */
+        frameCount: null,
+        /** The duration of one frame of an animated GIF, in milliseconds. */
+        frameDurationMs: null,
+        /** The mask picture of an edit: the area of the source that is repainted. */
+        mask: null,
         /** Where the pictures are written, relative to the working directory. */
         outputDir: '.',
         /** Route of the picture: null follows the model, 'images' or 'responses'. */
@@ -257,7 +281,7 @@ export function defaultConfigText() {
             background: defaults.image.background,
             outputDir: defaults.image.outputDir,
             alphaMode: defaults.image.alphaMode,
-            complexity: defaults.image.complexity,
+            quality: defaults.image.quality,
         },
         reasoning: {
             effort: defaults.reasoning.effort,

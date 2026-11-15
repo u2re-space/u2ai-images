@@ -3,12 +3,14 @@
  * @module image/sizing
  * @purpose The ladder of the frames: what the caller asks for, what the model accepts, and the
  *          order of the attempts when the host refuses the frame.
- * @exports IMAGE_SIZES, VECTOR_RATIOS, RIVERFLOW_RATIOS, RIVERFLOW_RESOLUTIONS, IMAGE_TIER_LIMITS,
+ * @exports IMAGE_SIZES, VECTOR_RATIOS, GPT_IMAGE_RATIOS, SEEDREAM_RATIOS, RIVERFLOW_RATIOS,
+ *          SEEDREAM_RESOLUTIONS, RIVERFLOW_RESOLUTIONS, IMAGE_TIER_LIMITS,
  *          IMAGE_SIZES_BY_RESOLUTION, parseImageSize, getOrientation, getAspectDifference,
  *          supportedAspectRatios, aspectRatioToken, aspectImageSize, inferResolution, tierFromToken,
  *          presetImageSize, fromMinimalSize, computeSize, normalizeImageSize, makePad16Size,
  *          imageRequestSize, imageSizeFields, sameAspectImageSize, isImageSizeError,
- *          nearestRiverflowRatio, imageSizeAttempts, needsDiv16Padding, needsMinPixelsPadding,
+ *          nearestRiverflowRatio, nearestModelRatio, snapResolution, imageSizeAttempts,
+ *          needsDiv16Padding, needsMinPixelsPadding,
  *          paddedSizeToMinPixels, paddedSizeToMinPixelsByResolution, alignmentPlan
  * @ai.tags image, sizing
  * @ai.hint legacy-0.2
@@ -17,11 +19,15 @@
 import {
     GPT_IMAGE_25,
     GPT_IMAGE_26,
+    GPT_IMAGE_RATIOS,
     MAX_IMAGE_EDGE,
     MAX_IMAGE_PIXELS,
     MAX_IMAGE_RATIO,
     MIN_IMAGE_PIXELS,
-    RIVERFLOW,
+    RIVERFLOW_RATIOS,
+    RIVERFLOW_RESOLUTIONS,
+    SEEDREAM_RATIOS,
+    SEEDREAM_RESOLUTIONS,
     imageModelProfile,
 } from '../model/profiles.js';
 import {
@@ -32,6 +38,9 @@ import {
     parseAspectToken,
     rationalAspect,
 } from './aspect.js';
+
+export { GPT_IMAGE_RATIOS, RIVERFLOW_RATIOS, RIVERFLOW_RESOLUTIONS, SEEDREAM_RATIOS, SEEDREAM_RESOLUTIONS };
+
 /** Frame presets POST /images/generations and /images/edits accept for the preset-only models. */
 export const IMAGE_SIZES = Object.freeze(['1024x1024', '1024x1536', '1536x1024']);
 
@@ -41,12 +50,6 @@ export const IMAGE_SIZES = Object.freeze(['1024x1024', '1024x1536', '1536x1024']
  * one the gateway answers to.
  */
 export const VECTOR_RATIOS = Object.freeze(['1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16', 'auto']);
-
-/** Aspect ratios accepted by Riverflow (Sourceful). */
-export const RIVERFLOW_RATIOS = Object.freeze(['1:1', '4:3', '3:4', '3:2', '2:3', '5:4', '4:5', '16:9', '9:16', '21:9', 'auto']);
-
-/** Resolution tiers accepted by Riverflow (Sourceful). */
-export const RIVERFLOW_RESOLUTIONS = Object.freeze(['512', '1K', '2K', '4K']);
 
 /**
  * What one resolution tier stands for: the longest side it names and the pixel budget it implies.
@@ -171,16 +174,49 @@ export function getAspectDifference(a, b) {
 }
 
 /**
- * The shapes one model is asked for by name: the ratio field of a tier-based gateway, the vector
+ * The shapes one model is asked for by name: the ratio list of the model itself, the vector
  * ratio list, or the standard catalogue for a model that takes a literal frame.
+ *
+ * Every family has its own menu: the seedream takes the cinema shapes (`9:19.5`, `9:21`), the
+ * gpt-image stops at `21:9`, and a model the registry does not know is asked about the standard
+ * catalogue.
  * @param {string|null|undefined} model
  * @param {'vector'|'image'|'auto'} [field] which field the ratio is headed for
  * @returns {readonly string[]}
  */
 export function supportedAspectRatios(model, field = 'auto') {
     if (field === 'vector') return VECTOR_RATIOS;
-    if (field === 'image' || imageModelProfile(model).resolutionTiers) return RIVERFLOW_RATIOS;
+    const profile = imageModelProfile(model);
+    if (Array.isArray(profile.aspectRatios) && profile.aspectRatios.length) return profile.aspectRatios;
+    if (field === 'image' || profile.resolutionTiers) return RIVERFLOW_RATIOS;
     return STANDARD_RATIOS;
+}
+
+/**
+ * Pull a resolution tier down to one the model really serves.
+ *
+ * The vendor refuses a tier that is not on its menu (`resolution: not supported. Accepted: 1K,
+ * 1.5K, 2K`), so a tier outside the list is pulled down to the closest one below it — and up to
+ * the lowest one of the list when the request is below the whole menu.
+ * @param {string|null|undefined} tier
+ * @param {string|null|undefined} [model]
+ * @returns {string|null} the tier as the API spells it (`1K`, `1.5K`, `2K`, `4K`)
+ */
+export function snapResolution(tier, model = null) {
+    const key = tierFromToken(tier, model);
+    if (!key) return null;
+    const profile = imageModelProfile(model);
+    const list = Array.isArray(profile.resolutions) ? profile.resolutions : null;
+    if (!list || !list.length) return key.toUpperCase();
+    const wanted = key.toUpperCase();
+    if (list.includes(wanted)) return wanted;
+    const order = ['512', '1K', '1.5K', '2K', '3K', '4K'];
+    const rows = list
+        .map((item) => ({ item, index: order.indexOf(String(item).toUpperCase()) }))
+        .filter((row) => row.index >= 0)
+        .sort((a, b) => a.index - b.index);
+    const below = rows.filter((row) => row.index <= order.indexOf(wanted)).pop();
+    return below?.item ?? rows[0]?.item ?? wanted;
 }
 
 /**
@@ -450,7 +486,7 @@ export function imageRequestSize(size, model, resolution = null) {
     }
     // A family that serves tiers keeps the tier token: the gateway reads it as `resolution`, and
     // unfolding `2K` into `2048x2048` would move the request out of the field the model is tuned by.
-    if (caps.resolutionTiers && tierFromToken(value, model)) return tierFromToken(value, model).toUpperCase();
+    if (caps.resolutionTiers && tierFromToken(value, model)) return snapResolution(value, model);
     // A family without tiers must not be sent a tier frame it does not serve.
     if (!caps.resolutionTiers && !tierFromToken(resolution, model)) return presetImageSize(value, resolution, model);
     return normalizeImageSize(value, resolution, model);
@@ -473,22 +509,22 @@ export function imageSizeFields(size, model, resolution = null) {
     const value = String(size ?? '').trim().toLowerCase();
     const caps = imageModelProfile(model);
     // An explicitly requested tier is the `resolution` field even when no frame was named.
-    const explicitTier = caps.resolutionTiers ? tierFromToken(resolution, model) : null;
-    if (!value || value === 'auto') return explicitTier ? { resolution: explicitTier.toUpperCase() } : {};
+    const explicitTier = caps.resolutionTiers ? snapResolution(resolution, model) : null;
+    if (!value || value === 'auto') return explicitTier ? { resolution: explicitTier } : {};
     if (caps.resolutionTiers) {
         if (/^\d+\s*x\s*\d+$/.test(value)) return { size: value.replace(/\s+/g, '') };
         // A tier named on its own — `512`, `2K`, or the pixel count `2048` — is the `resolution`
         // field, never `size`: a gateway that has no such frame drops the field and answers square.
-        const tier = tierFromToken(value, model);
-        if (tier) return { resolution: tier.toUpperCase() };
+        const tier = snapResolution(value, model);
+        if (tier) return { resolution: tier };
         // Any shape the caller names — `16:9`, `2.39`, `cinemascope`, `1920x1080` written as a
         // ratio — is rounded to the closest shape of the model's own list rather than dropped to
         // `auto`: a wide request must not come back square because 2.39:1 is not on the menu.
         const shape = parseAspectToken(value);
         if (shape) {
             return {
-                aspect_ratio: nearestAspect(shape.ratio, RIVERFLOW_RATIOS) || 'auto',
-                ...(explicitTier ? { resolution: explicitTier.toUpperCase() } : {}),
+                aspect_ratio: nearestAspect(shape.ratio, supportedAspectRatios(model, 'image')) || 'auto',
+                ...(explicitTier ? { resolution: explicitTier } : {}),
             };
         }
     }
@@ -587,6 +623,23 @@ export function nearestRiverflowRatio(sizePixels) {
 }
 
 /**
+ * Nearest aspect ratio from the menu of the model itself, for a pixel size or any shape token.
+ * The menu is the one the catalog publishes for the family: the cinema shapes of the seedream and
+ * the frames of the riverflow are not the same list.
+ * @param {string} sizePixels
+ * @param {string|null|undefined} [model]
+ * @returns {string|null} a ratio string like '4:5' that `imageSizeFields` can consume, or null when
+ *   the shape is already square (the gateway answers a square request with its default square frame)
+ */
+export function nearestModelRatio(sizePixels, model = null) {
+    const shape = parseAspectToken(sizePixels);
+    if (!shape) return null;
+    const terms = rationalAspect(shape.ratio);
+    if (terms && terms.width === terms.height) return null;
+    return nearestAspect(shape.ratio, supportedAspectRatios(model, 'image'));
+}
+
+/**
  * Ordered image-size attempts: the exact request, a valid same-ratio size, then a nearest fallback.
  * @param {string|null|undefined} size
  * @param {string|null|undefined} model
@@ -605,8 +658,8 @@ export function imageSizeAttempts(size, model, resolution = null) {
     const attempts = [initial];
     const sameRatio = sameAspectImageSize(initial, model);
     if (sameRatio && !attempts.includes(sameRatio)) attempts.push(sameRatio);
-    if (RIVERFLOW.test(String(model ?? ''))) {
-        const ratio = nearestRiverflowRatio(initial);
+    if (profile.resolutionTiers) {
+        const ratio = nearestModelRatio(initial, model);
         if (ratio && !attempts.includes(ratio)) attempts.push(ratio);
     } else {
         const preset = presetImageSize(initial, resolution, model);

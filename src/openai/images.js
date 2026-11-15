@@ -7,7 +7,7 @@
  *          supportsTransparentBackground, backgroundValue, acceptsResponseFormat, isVectorModel,
  *          isSvgRequest, normalizeVectorRatio, svgConversionModel, encodeMultipart, imagePayloads,
  *          imageSources, pngHasAlphaChannel, readImageSize, sniffImage, withSizeHint, generationBody,
- *          imageTransport, imageModelFor, imageComplexityValue
+ *          imageTransport, imageModelFor, imageQualityValue
  * @ai.tags openai, images
  * @ai.hint legacy-0.2
  */
@@ -20,6 +20,7 @@ import {
     RIVERFLOW,
     SVG_CONVERSION_MODEL,
     imageModelProfile,
+    snapQuality,
 } from '../model/profiles.js';
 import {
     VECTOR_RATIOS,
@@ -205,25 +206,21 @@ export function sniffImage(buffer) {
 }
 
 /**
- * Resolve an image complexity tier: the caller's value when it names one, otherwise the
+ * Resolve the quality tier of a picture: the caller's value when it names one, otherwise the
  * model's own tier from the profile.
  *
- * A model that knows no such field gets nothing: the tier of the request follows the model, so
- * `high` goes to the models that take it (gpt-image-2.6, riverflow) and stays away from the
- * models that would refuse the whole request (seedream).
+ * The field of the quality is `quality` — the tier of the planning the models of OpenAI take
+ * (`low`, `medium`, `high`, `xhigh`, `max`). A model that knows no such field gets nothing: the
+ * tier of the request follows the model, so `high` goes to the models that take it (gpt-image) and
+ * stays away from the models that would refuse the whole request (seedream, riverflow).
  *
  * `auto` and empty strings mean "the tier of the model" — `high` for the families that take it.
- * Accepted values: `low`, `medium`, `high`.
- * @param {{ model: string, complexity?: string|null }} request
+ * A level the model does not know is pulled down to the closest one below it.
+ * @param {{ model: string, quality?: string|null }} request
  * @returns {string|null}
  */
-export function imageComplexityValue({ model, complexity = null }) {
-    const profile = imageModelProfile(model);
-    // The model does not know the field: nothing goes out.
-    if (!profile.complexity) return null;
-    const value = String(complexity ?? '').trim().toLowerCase();
-    if (!value || value === 'auto') return profile.complexity;
-    return value;
+export function imageQualityValue({ model, quality = null }) {
+    return snapQuality(quality, imageModelProfile(model));
 }
 
 /** Select whether image requests use the Images API or Responses image_generation tool. */
@@ -312,7 +309,7 @@ export function acceptsResponseFormat(model) {
 }
 
 function isSizeFinicky(caps) {
-    return caps.resolutionTiers || caps.routeEditsThroughGeneration || caps.omitSizeOnReject;
+    return caps.sizeHints || caps.routeEditsThroughGeneration || caps.omitSizeOnReject;
 }
 
 /**
@@ -362,16 +359,32 @@ export function normalizeVectorRatio(ratio) {
 
 /**
  * Build the JSON body accepted by /images/generations for the selected model family.
- * @param {{ model: string, prompt: string, size?: string|null, complexity?: string|null,
+ *
+ * The fields are the ones the model really takes: the frame (`size`, `resolution`, `aspect_ratio`),
+ * the quality, the format, the background and the seed. A field the model does not know stays out
+ * of the request — the gateway drops what it does not serve, but a field that is there and wrong
+ * costs the whole request.
+ * @param {{ model: string, prompt: string, size?: string|null, quality?: string|null,
  *   n?: number|null, format?: string|null, background?: string|null, references?: string[]|null,
- *   resolution?: string|null, sizeHint?: 'auto'|'always'|'never' }} request
+ *   resolution?: string|null, sizeHint?: 'auto'|'always'|'never', seed?: number|null,
+ *   compression?: number|null, frameCount?: number|null, frameDurationMs?: number|null,
+ *   mask?: string|null }} request
  * @returns {object}
  */
-export function generationBody({ model, prompt, size = null, complexity = null, n = null, format = null,
-    background = null, references = null, resolution = null, sizeHint = 'auto' }) {
+export function generationBody({ model, prompt, size = null, quality = null, n = null, format = null,
+    background = null, references = null, resolution = null, sizeHint = 'auto', seed = null,
+    compression = null, frameCount = null, frameDurationMs = null, mask = null }) {
     const body = { model, prompt };
+    const profile = imageModelProfile(model);
+    // How many pictures one request may carry: the model has a ceiling of its own.
+    const count = Number.isSafeInteger(n) && n > 1 ? Math.min(n, Math.max(1, profile.maxImages ?? 1)) : null;
     if (Array.isArray(references) && references.length) {
         body.input_references = references.map((url) => ({ type: 'image_url', image_url: { url } }));
+    }
+    // The mask of the area to repaint: only the gpt-image family takes it, and only together
+    // with a source picture.
+    if (profile.mask && mask && Array.isArray(references) && references.length) {
+        body.mask = { image_url: { url: mask } };
     }
     if (isSvgRequest({ model, format })) {
         // A free-frame family draws the vector on the frame it is handed, so a pixel frame stays a
@@ -379,7 +392,7 @@ export function generationBody({ model, prompt, size = null, complexity = null, 
         // `aspect_ratio` alone; collapsing a frame into a ratio there would drop information it has
         // no field for, and inventing a `size` it rejects costs the whole request.
         const asked = String(size ?? '').trim();
-        const frame = /^\d+\s*x\s*\d+$/.test(asked) && imageModelProfile(model).customSizes
+        const frame = /^\d+\s*x\s*\d+$/.test(asked) && profile.customSizes
             ? asked.replace(/\s+/g, '')
             : null;
         // The frame is still the model's own frame: a vector call is validated like any other, so
@@ -389,7 +402,7 @@ export function generationBody({ model, prompt, size = null, complexity = null, 
             const aspect = normalizeVectorRatio(size);
             if (aspect) body.aspect_ratio = aspect;
         }
-        if (Number.isInteger(n) && n > 1) body.n = n;
+        if (count) body.n = count;
         body[imageFormatField(model)] = 'svg';
         const svgModel = svgConversionModel(model);
         if (svgModel) body.svg = svgModel;
@@ -405,18 +418,30 @@ export function generationBody({ model, prompt, size = null, complexity = null, 
     if (fields.resolution) body.resolution = fields.resolution;
     if (fields.aspect_ratio) body.aspect_ratio = fields.aspect_ratio;
     body.prompt = withSizeHint(prompt, body, model, sizeHint);
-    const profile = imageModelProfile(model);
     if (!profile.keepProSuffix) {
         const sizePair = body.size?.split('x').map((part) => parseInt(part || '0', 10));
         if (sizePair?.[0] <= 1024 && sizePair?.[1] <= 1024) body.model = body.model?.replace(/\-pro$/, '') || body.model;
     }
-    const cx = imageComplexityValue({ model, complexity });
-    if (cx) body.complexity = cx;
-    if (Number.isInteger(n) && n > 1) body.n = n;
+    if (count) body.n = count;
     const fmt = resolveImageFormat({ model, format });
     if (fmt) body[imageFormatField(model)] = fmt;
     const backgroundField = backgroundValue({ model, format: fmt, background });
     if (backgroundField) body.background = backgroundField;
+    // The quality of the picture: only the models that take the field get one.
+    const level = imageQualityValue({ model, quality });
+    if (level) body.quality = level;
+    // The seed makes the answer repeatable — only the models that keep it.
+    if (profile.seed && Number.isSafeInteger(seed) && seed >= 0) body.seed = seed;
+    // The degree of compression of a jpeg or a webp.
+    if (profile.outputCompression && Number.isSafeInteger(compression) && compression >= 0 && compression <= 100
+        && (fmt === 'jpeg' || fmt === 'webp')) body.output_compression = compression;
+    // The frames of an animated GIF.
+    if (profile.gif && fmt === 'gif') {
+        if (Number.isSafeInteger(frameCount) && frameCount >= 2 && frameCount <= 16) body.frame_count = frameCount;
+        if (Number.isSafeInteger(frameDurationMs) && frameDurationMs >= 20 && frameDurationMs <= 2000) {
+            body.frame_duration_ms = frameDurationMs;
+        }
+    }
     return body;
 }
 

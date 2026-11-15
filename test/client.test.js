@@ -301,25 +301,63 @@ test('the effort of a request is pulled down to what the model takes', async () 
     }
 });
 
-test('the tier of the picture travels with the request of the model that takes it', async () => {
+test('the quality of the picture travels with the request of the model that takes it', async () => {
     const host = await mockHost(() => ({ json: { data: [{ b64_json: TINY_PNG }] } }));
     const client = await createClient({
         config: configFor(host.baseURL, {
-            image: { sizeHint: 'auto', div16: 'auto', padToMin: 'auto', complexity: 'high' },
+            image: { sizeHint: 'auto', div16: 'auto', padToMin: 'auto', quality: 'high' },
         }),
     });
     try {
         await client.images.generate({ model: GPT, prompt: 'a lighthouse' });
         const body = JSON.parse(host.requests.at(-1).body);
-        assert.equal(body.complexity, 'high', 'gpt-image-2.6 takes the tier');
+        assert.equal(body.quality, 'high', 'gpt-image-2.6 takes the tier');
 
         await client.images.generate({ model: 'bytedance-seed/seedream-5-5', prompt: 'a lighthouse' });
         const seedream = JSON.parse(host.requests.at(-1).body);
         assert.equal(
-            seedream.complexity,
+            seedream.quality,
             undefined,
             'the model that knows no such field is asked without it',
         );
+    } finally {
+        client.close();
+        await host.close();
+    }
+});
+
+test('the old name of the quality still works', async () => {
+    const host = await mockHost(() => ({ json: { data: [{ b64_json: TINY_PNG }] } }));
+    const client = await createClient({
+        config: configFor(host.baseURL, {
+            image: { sizeHint: 'auto', div16: 'auto', padToMin: 'auto', quality: 'auto', complexity: 'low' },
+        }),
+    });
+    try {
+        await client.images.generate({ model: GPT, prompt: 'a lighthouse' });
+        const body = JSON.parse(host.requests.at(-1).body);
+        assert.equal(body.quality, 'low', 'the deprecated field is read when the new one is left at auto');
+    } finally {
+        client.close();
+        await host.close();
+    }
+});
+
+test('a model with one picture per request is asked as many times as needed', async () => {
+    const host = await mockHost(() => ({ json: { data: [{ b64_json: TINY_PNG }] } }));
+    const client = await createClient({
+        config: configFor(host.baseURL, { image: { sizeHint: 'auto', div16: 'auto', padToMin: 'auto' } }),
+    });
+    try {
+        const answer = await client.images.generate({
+            model: 'bytedance-seed/seedream-5-5',
+            prompt: 'a lighthouse',
+            n: 3,
+        });
+        assert.equal(host.requests.length, 3, 'the seedream takes one picture per request');
+        assert.equal(answer.payloads.length, 3);
+        const body = JSON.parse(host.requests[0].body);
+        assert.equal(body.n, undefined, 'the count of one request is the count of the model');
     } finally {
         client.close();
         await host.close();
