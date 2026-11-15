@@ -93,6 +93,8 @@ export async function run(ctx) {
         size: size ?? 'the frame of the source',
         format,
         background,
+        complexity: config?.image?.complexity ?? 'auto',
+        effort: config?.reasoning?.effort ?? null,
         references: references.map((item) => item.filename),
         output: target.target,
     };

@@ -52,6 +52,57 @@ test('the defaults are a valid configuration', () => {
     assert.doesNotThrow(() => validateConfig(structuredClone(defaults)));
 });
 
+test('the reasoning of the run is checked field by field', () => {
+    const config = structuredClone(defaults);
+    assert.equal(config.reasoning.effort, 'high', 'the run thinks hard by default');
+    assert.equal(config.reasoning.summary, null);
+    assert.equal(config.roles.default.effort, null, 'the roles inherit the effort of the run');
+    assert.equal(config.image.complexity, 'auto', 'the picture takes the tier of its model');
+
+    assert.throws(
+        () => validateConfig({ ...config, reasoning: { ...config.reasoning, effort: 'ultra' } }),
+        /reasoning\.effort/,
+    );
+    assert.throws(
+        () => validateConfig({ ...config, reasoning: { ...config.reasoning, summary: 'long' } }),
+        /reasoning\.summary/,
+    );
+    assert.throws(
+        () => validateConfig({ ...config, reasoning: { ...config.reasoning, whatever: 1 } }),
+        /reasoning\.whatever/,
+    );
+    assert.throws(
+        () => validateConfig({ ...config, roles: { ...config.roles, planner: { effort: 'ultra' } } }),
+        /roles\.planner\.effort/,
+    );
+    assert.throws(
+        () => validateConfig({
+            ...config,
+            image: { ...config.image, complexity: 'titanic' },
+        }),
+        /image\.complexity/,
+    );
+});
+
+test('the reasoning of the run comes from the environment', async () => {
+    const home = await homeDir();
+    try {
+        const config = await loadConfig({
+            env: cleanEnv(home, {
+                AI_IMAGE_EFFORT: 'low',
+                AI_IMAGE_SUMMARY: 'concise',
+                AI_IMAGE_IMAGE_COMPLEXITY: 'medium',
+            }),
+            ensureHome: false,
+        });
+        assert.equal(config.reasoning.effort, 'low');
+        assert.equal(config.reasoning.summary, 'concise');
+        assert.equal(config.image.complexity, 'medium');
+    } finally {
+        await rm(home, { recursive: true, force: true });
+    }
+});
+
 test('the config file overrides the defaults', async () => {
     const home = await homeDir();
     try {

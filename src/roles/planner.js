@@ -3,7 +3,7 @@
  * @module roles/planner
  * @purpose The planner of the strategy: what the picture is for, of what frame, with what
  *          background, and what has to happen to the source before the model sees it.
- * @depends agent/ask, agent/schemas, model/purpose
+ * @depends agent/ask, agent/schemas, agent/effort, model/purpose
  * @usedBy agent/pipeline, commands/process
  * @exports PLANNER_INSTRUCTIONS, defaultStrategy, normalizeStrategy, planStrategy
  * @ai.tags roles, planner, strategy
@@ -11,6 +11,7 @@
  */
 
 import { askRole } from '../agent/ask.js';
+import { effortFor } from '../agent/effort.js';
 import { PLANNER_SCHEMA } from '../agent/schemas.js';
 import { canonicalPurpose, PURPOSE_NAMES } from '../model/purpose.js';
 import { isBatchStop } from '../openai/batch.js';
@@ -156,6 +157,7 @@ export async function planStrategy({
             schema: PLANNER_SCHEMA,
             name: 'strategy',
             signal,
+            effort: effortFor({ config, role: 'planner' }),
         });
         if (!answer.data) {
             return { strategy: fallback, source: 'default', errors: answer.errors };

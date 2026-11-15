@@ -34,6 +34,9 @@ export function parseArgv(argv) {
             'out-dir': { type: 'string' },
             model: { type: 'string', short: 'm' },
             'image-model': { type: 'string' },
+            effort: { type: 'string' },
+            summary: { type: 'string' },
+            complexity: { type: 'string' },
             purpose: { type: 'string' },
             size: { type: 'string' },
             resolution: { type: 'string' },
@@ -89,6 +92,9 @@ export function parseArgv(argv) {
         outDir: parsed.values['out-dir'] ?? null,
         model: parsed.values.model ?? null,
         imageModel: parsed.values['image-model'] ?? null,
+        effort: parsed.values.effort ?? null,
+        summary: parsed.values.summary ?? null,
+        complexity: parsed.values.complexity ?? null,
         purpose: parsed.values.purpose ?? null,
         size: parsed.values.size ?? null,
         resolution: parsed.values.resolution ?? null,
@@ -149,12 +155,17 @@ async function loadCommand(name) {
 export function configOverrides(options) {
     const overrides = {};
     const image = {};
+    const reasoning = {};
     if (options.model) overrides.model = options.model;
     if (options.imageModel) overrides.imageModel = options.imageModel;
+    if (options.effort) reasoning.effort = options.effort;
+    if (options.summary) reasoning.summary = options.summary;
+    if (Object.keys(reasoning).length) overrides.reasoning = reasoning;
     if (options.size) image.size = options.size;
     if (options.resolution) image.resolution = options.resolution;
     if (options.format) image.format = options.format;
     if (options.background) image.background = options.background;
+    if (options.complexity) image.complexity = options.complexity;
     if (options.purpose) image.purpose = options.purpose;
     if (options.engine) image.rasterEngine = options.engine;
     if (options.alphaMode) image.alphaMode = options.alphaMode;

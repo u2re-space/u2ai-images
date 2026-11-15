@@ -264,6 +264,68 @@ test('the strict answer of a role travels under text.format', () => {
     assert.equal(body.text.type, undefined, 'text.type is not a field of the request');
 });
 
+test('a text request carries the reasoning of the run', async () => {
+    const host = await mockHost(() => ({
+        json: { output: [{ type: 'message', content: [{ type: 'output_text', text: 'ok' }] }] },
+    }));
+    const client = await createClient({
+        config: configFor(host.baseURL, { reasoning: { effort: 'high' } }),
+    });
+    try {
+        await client.responses.create({ model: 'minimax/minimax-m3.1-flash', input: 'a cat' });
+        const body = JSON.parse(host.requests.at(-1).body);
+        assert.equal(body.reasoning.effort, 'high');
+        assert.equal(
+            body.complexity,
+            undefined,
+            'the tier of the planning is a field of a picture request, not of a text one',
+        );
+    } finally {
+        client.close();
+        await host.close();
+    }
+});
+
+test('the effort of a request is pulled down to what the model takes', async () => {
+    const host = await mockHost(() => ({
+        json: { output: [{ type: 'message', content: [{ type: 'output_text', text: 'ok' }] }] },
+    }));
+    const client = await createClient({ config: configFor(host.baseURL) });
+    try {
+        await client.responses.create({ model: 'openai/gpt-6-luna', input: 'a cat', effort: 'high' });
+        const body = JSON.parse(host.requests.at(-1).body);
+        assert.equal(body.reasoning.effort, 'medium', 'the model does not take more than its ceiling');
+    } finally {
+        client.close();
+        await host.close();
+    }
+});
+
+test('the tier of the picture travels with the request of the model that takes it', async () => {
+    const host = await mockHost(() => ({ json: { data: [{ b64_json: TINY_PNG }] } }));
+    const client = await createClient({
+        config: configFor(host.baseURL, {
+            image: { sizeHint: 'auto', div16: 'auto', padToMin: 'auto', complexity: 'high' },
+        }),
+    });
+    try {
+        await client.images.generate({ model: GPT, prompt: 'a lighthouse' });
+        const body = JSON.parse(host.requests.at(-1).body);
+        assert.equal(body.complexity, 'high', 'gpt-image-2.6 takes the tier');
+
+        await client.images.generate({ model: 'bytedance-seed/seedream-5-5', prompt: 'a lighthouse' });
+        const seedream = JSON.parse(host.requests.at(-1).body);
+        assert.equal(
+            seedream.complexity,
+            undefined,
+            'the model that knows no such field is asked without it',
+        );
+    } finally {
+        client.close();
+        await host.close();
+    }
+});
+
 test('the cut-out of a padded source names the zone of the content', async () => {
     const fakeRaster = {
         padImageBytes: async ({ bytes, targetWidth, targetHeight }) => ({

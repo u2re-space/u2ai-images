@@ -3,7 +3,7 @@
  * @module roles/decorator
  * @purpose The decorator: the complex decorative layer of a picture — ornaments, ribbons,
  *          dividers, frames, patterns, badges — as a CSS rule or as a standalone SVG.
- * @depends node:path
+ * @depends node:path, agent/effort
  * @usedBy commands/decorate
  * @exports DECORATOR_INSTRUCTIONS, DECORATION_KINDS, chooseDecorationKind, decorationName,
  *          parseDecoration, buildDecoration
@@ -17,6 +17,7 @@
  */
 
 import path from 'node:path';
+import { effortFor } from '../agent/effort.js';
 
 /**
  * The instructions of the decorator.
@@ -177,6 +178,7 @@ export async function buildDecoration({
         model: usedModel,
         instructions: DECORATOR_INSTRUCTIONS,
         input,
+        effort: effortFor({ config, role: 'decorator' }),
     });
     const text = client.responses.text(answer);
     const parsed = parseDecoration(text, chosen);

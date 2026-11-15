@@ -39,6 +39,24 @@ export const defaults = {
     /** Wall-clock budget of one request. */
     timeoutMs: 120_000,
 
+    // --- reasoning ---------------------------------------------------------------
+    /**
+     * How the text model thinks.
+     *
+     * `effort` is the effort of the run: every text request works at this level. A role with
+     * its own effort (`roles.<role>.effort`) works at its own level instead. The level is
+     * pulled down to what the model of the request really takes (`src/model/text.js`).
+     *
+     * The tier of the planning (`complexity`) is not a field of a text request: it belongs to
+     * the picture models, and it lives in `image.complexity`.
+     */
+    reasoning: {
+        /** The reasoning effort of the text requests of the run. */
+        effort: 'high',
+        /** The summary of the reasoning of an answer; null sends no summary. */
+        summary: null,
+    },
+
     // --- HTTP backends -------------------------------------------------------
     /**
      * Ordered hosts of the text API; the first usable one becomes the primary.
@@ -178,10 +196,12 @@ export const defaults = {
      * Per-role overrides. The resolution chain is
      * role -> roles.default -> the top level. `instructions` are appended to the
      * prompt of the role; `imageModel`/`vectorModel` travel with it.
+     * The `effort` of a role is resolved as role -> roles.default -> reasoning.effort.
      */
     roles: {
         default: {
             model: null,
+            /** null — the role works at the effort of the run (`reasoning.effort`). */
             effort: null,
             imageModel: null,
             vectorModel: null,
@@ -237,6 +257,10 @@ export function defaultConfigText() {
             background: defaults.image.background,
             outputDir: defaults.image.outputDir,
             alphaMode: defaults.image.alphaMode,
+            complexity: defaults.image.complexity,
+        },
+        reasoning: {
+            effort: defaults.reasoning.effort,
         },
         purpose: { models: structuredClone(defaults.purpose.models) },
         batch: { enabled: false },

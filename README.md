@@ -135,9 +135,12 @@ The configuration lives in `~/.ai-image/config.json` (`AI_IMAGE_HOME` moves the 
 directory). The file is created by `ai-image config init`; the fields the user is expected to
 edit are the only ones it holds — everything else stays on the defaults.
 
+The default text model is `minimax/minimax-m3.1-flash` (the roles and the AI parser talk
+through it) and the default picture model is `bytedance-seed/seedream-5-5`.
+
 ```json
 {
-  "model": "moonshotai/kimi-k3.1-pro",
+  "model": "minimax/minimax-m3.1-flash",
   "imageModel": "bytedance-seed/seedream-5-5",
   "vectorModel": null,
   "backends": [
@@ -152,7 +155,11 @@ edit are the only ones it holds — everything else stays on the defaults.
     "format": "png",
     "background": "auto",
     "outputDir": ".",
-    "alphaMode": "auto"
+    "alphaMode": "auto",
+    "complexity": "auto"
+  },
+  "reasoning": {
+    "effort": "high"
   },
   "purpose": {
     "models": {
@@ -198,6 +205,8 @@ The home directory holds:
 | `AI_IMAGE_BACKENDS` | The JSON list of the text backends. |
 | `AI_IMAGE_IMAGES_BACKENDS` | The JSON list of the picture backends. |
 | `AI_IMAGE_IMAGE_SIZE`, `AI_IMAGE_IMAGE_FORMAT`, `AI_IMAGE_IMAGE_BACKGROUND`, `AI_IMAGE_IMAGE_RESOLUTION` | The picture knobs. |
+| `AI_IMAGE_IMAGE_COMPLEXITY` | The complexity tier of the picture: `auto`, `low`, `medium`, `high`. |
+| `AI_IMAGE_EFFORT`, `AI_IMAGE_SUMMARY` | The reasoning effort and the summary of the text requests. |
 | `AI_IMAGE_PURPOSE` | The default purpose. |
 | `AI_IMAGE_ALPHA_MODE` | The default alpha mode. |
 | `AI_IMAGE_RASTER_ENGINE`, `AI_IMAGE_MAGICK_PATH` | The local raster engine. |
@@ -208,6 +217,48 @@ the picture model.
 
 The messages of the configuration validator are in Russian, as in the sibling package
 `@u2ai/decomposer`; every other message of the CLI is in English.
+
+## Reasoning effort
+
+The text model thinks at the level the run asks for. The level travels in the body of every
+text request, under `reasoning.effort` — it is not a hint of the prompt and not a field of the
+local settings.
+
+The chain of the levels is short:
+
+```
+roles.<role>.effort  →  roles.default.effort  →  reasoning.effort
+```
+
+The first one that is set wins. The default of the run is `high`, and the default of the
+default role is `null` — the role inherits the effort of the run until it is given its own.
+The levels are `none`, `minimal`, `low`, `medium`, `high`, `xhigh` and `max`; `reasoning.summary`
+(`auto`, `concise`, `detailed`) asks for the summary of the reasoning and is off by default.
+
+Every request is pulled down to what the model of that request really takes, so a fallback
+model is never asked for a level it refuses:
+
+| Model | Context | Output | Ceiling | Ladder |
+|---|---|---|---|---|
+| `minimax/minimax-m3.1-flash` | 1M | 524K | `xhigh` | `low`, `medium`, `high`, `xhigh` |
+| `moonshotai/kimi-k3.1-pro` | 1M | 944K | `medium` | `none`, `low`, `medium` |
+
+Two facts of the live gateway shape the table. MiniMax refuses to work without reasoning
+("Reasoning is mandatory for this endpoint and cannot be disabled"), so a request for `none`
+is raised to `low` instead of being refused. Kimi takes the reasoning off without a refusal
+and answers in a fraction of the time (about 0.8 s against about 31 s at `medium` on the same
+question), so `none` stays on its ladder — pass `--effort none` when the answer matters more
+than the reasoning.
+
+The tier of the planning (`complexity`) is a field of the *picture* request, not of a text one:
+it belongs to the models that take it (`gpt-image-2.6`, `riverflow`, where it is `high`), and
+the models that know no such field (`seedream`) are asked without it. The knob is
+`image.complexity` (`auto` by default — the tier of the model) and the flag `--complexity`.
+
+```bash
+ai-image process "a cover for the release" --effort medium
+ai-image process "a cover for the release" --effort none --model moonshotai/kimi-k3.1-pro
+```
 
 ## The providers
 

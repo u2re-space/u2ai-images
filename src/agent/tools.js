@@ -3,7 +3,8 @@
  * @module agent/tools
  * @purpose The tools of the agent: the pictures are made, cut, padded, fitted, cleaned and looked
  *          at through one interface.
- * @depends node:path, node:fs/promises, image/tools, image/alpha, image/vectorize, openai/client
+ * @depends node:path, node:fs/promises, image/tools, image/alpha, image/vectorize, openai/client,
+ *          agent/effort
  * @usedBy agent/pipeline, roles/processor
  * @exports TOOL_NAMES, createImageTools
  * @ai.tags agent, tools, images
@@ -30,6 +31,7 @@ import {
 import { applyGeneratedAlphaMask } from '../image/alpha.js';
 import { vectorizePicture } from '../image/vectorize.js';
 import { sniffImage } from '../openai/images.js';
+import { effortFor } from './effort.js';
 
 /** The names of the tools. */
 export const TOOL_NAMES = Object.freeze([
@@ -288,6 +290,8 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
                     { type: 'input_image', image_url: `data:${kind.mime};base64,${bytes.toString('base64')}` },
                 ],
                 signal,
+                // The effort of the run: the tool has no role of its own.
+                effort: effortFor({ config }),
                 // The description is a text request of the run: it may go out as a part of a batch.
                 batchable: true,
             });

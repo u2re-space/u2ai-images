@@ -24,3 +24,5 @@ export {
     validateConfig,
 } from './config.js';
 export { PURPOSE_NAMES, PURPOSE_MODEL_MAP } from './model/purpose.js';
+export { TEXT_MODEL_PROFILES, textModelProfile, snapEffort } from './model/text.js';
+export { effortFor } from './agent/effort.js';

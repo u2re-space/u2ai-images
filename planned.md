@@ -850,6 +850,66 @@ image-инструменты (`generate_image`, `edit_image`, `crop_image`, `spl
 
 ---
 
+## 23. Reasoning effort текстовой модели (step-c9)
+
+Цель шага: effort — это не украшение промпта, а поле тела запроса. Уровень уходит в
+`reasoning.effort` каждого текстового запроса, и модель реально меняет число reasoning-токенов
+в ответе (проверено на routerai: `none` → 0, `low` → 24, `high` → 67 токенов).
+
+Документы моделей RouterAI (ноябрь 2026):
+
+- `minimax/minimax-m3.1-flash` — контекст 1M, выход 524K, отклик 0,7 с, 108 ток/с,
+  8–32 ₽ за 1M токенов.
+- `moonshotai/kimi-k3.1-pro` — контекст 1M, выход 944K, 25–130 ₽ за 1M токенов.
+
+Живые пробы шлюза (один и тот же вопрос, ответ «391»):
+
+| Модель | effort | Время | Reasoning-токены | Итог |
+|---|---|---|---|---|
+| minimax | `high` | 1,3 с | 8 | ответ верный |
+| minimax | `none` | — | — | 400: «Reasoning is mandatory for this endpoint and cannot be disabled» |
+| kimi | `high` | 31,1 с | 32 | ответ верный |
+| kimi | `medium` | 31,0 с | 34 | ответ верный |
+| kimi | `low` | 52,1 с | 25 | ответ верный, но медленнее |
+| kimi | `none` | 0,8 с | 0 | ответ верный |
+
+`text.format` (json_schema) и `structured_outputs` у обеих моделей работают; `reasoning.summary`
+и `include_reasoning` принимаются.
+
+- [x] `src/model/text.js` — профили текстовых моделей: окно, выход, потолок effort и лестница
+      уровней; `snapEffort(effort, profile)` срезает уровень по профилю модели (отдельно на
+      каждую модель цепочки fallback).
+- [x] `src/agent/effort.js` — цепочка уровня: `roles.<role>.effort` → `roles.default.effort` →
+      `reasoning.effort`; в дефолтах `roles.default.effort = null`, иначе флаг `--effort`
+      не работал бы.
+- [x] `src/openai/responses.js` — тело текстового запроса несёт `reasoning.effort` и
+      `reasoning.summary`.
+- [x] `src/openai/client.js` — `responses.create({ effort, summary })`; уровень срезается по
+      профилю кандидата цепочки.
+- [x] Роли (`planner`, `corrector`, `decorator`) и инструмент `view_image` берут свой уровень.
+- [x] Конфиг: `reasoning.effort` (дефолт `high`), `reasoning.summary` (дефолт `null`),
+      `roles.<role>.effort`; валидация по-русски; env `AI_IMAGE_EFFORT`, `AI_IMAGE_SUMMARY`.
+- [x] CLI: `--effort`, `--summary`; модель по умолчанию — `minimax/minimax-m3.1-flash`.
+- [x] `complexity` убран из текстового запроса: в доках моделей этого поля для текста нет
+      (оно есть только у картинок — gpt-image-2.6, riverflow), а шлюз молча игнорирует
+      неизвестные поля, из-за чего ошибка была бы тихой.
+- [x] `complexity` картинки ожиллён: `image.complexity` → тело запроса (`high` у gpt-image-2.6
+      и riverflow, у seedream поля нет — запрос уходит без него); флаг `--complexity`.
+- [x] План команды (`--dry-run`) показывает effort прогона и тир картинки.
+- [x] Профили моделей: minimax — потолок `xhigh`, лестница `low|medium|high|xhigh` (`none`
+      поднимается до `low`, потому что endpoint не умеет без reasoning); kimi — потолок
+      `medium`, лестница `none|low|medium` (уровни выше `medium` стоят тех же секунд).
+- [x] Тесты: профили и срезание уровня, валидация и env, тело запроса, роль, флаги CLI.
+- [x] README (EN), planned.md (RU).
+- [x] Проверка: `npm run check` — 115/115 файлов; `npm test` — 201 тест, 200 проходят,
+      1 пропущен, 0 падений.
+
+Живая проверка тела, которое собирает код пакета (`buildResponsesBody`): minimax с `effort=high`
+— HTTP 200, ответ по json_schema; kimi с `effort=medium` (уровень срезан по потолку) —
+HTTP 200, ответ по json_schema.
+
+---
+
 ## Порядок работы и зависимости шагов
 
 ```

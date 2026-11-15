@@ -133,6 +133,18 @@ export function validateConfig(config) {
     if (!Number.isSafeInteger(c.retries) || c.retries < 0 || c.retries > 10) fail('retries: 0..10');
     if (!Number.isSafeInteger(c.timeoutMs) || c.timeoutMs < 5_000 || c.timeoutMs > 600_000) fail('timeoutMs: 5000..600000');
 
+    // --- reasoning -------------------------------------------------------------------
+    if (!isRecord(c.reasoning)) fail('reasoning должен быть объектом');
+    for (const key of Object.keys(c.reasoning)) {
+        if (!(key in defaults.reasoning)) fail(`reasoning.${key}: неизвестное поле`);
+    }
+    if (c.reasoning.effort !== null && !ENUMS.reasoningEfforts.includes(c.reasoning.effort)) {
+        fail(`reasoning.effort: ${ENUMS.reasoningEfforts.join(' | ')}`);
+    }
+    if (c.reasoning.summary !== null && !ENUMS.reasoningSummaries.includes(c.reasoning.summary)) {
+        fail(`reasoning.summary: ${ENUMS.reasoningSummaries.join(' | ')}`);
+    }
+
     // --- backends ------------------------------------------------------------------
     validateBackendList(c.backends, 'backends', fail);
     validateBackendList(c.imagesBackends, 'imagesBackends', fail);
@@ -234,6 +246,9 @@ export function validateConfig(config) {
             if (!ROLE_FIELDS.includes(key)) fail(`roles.${name}.${key}: неизвестное поле`);
         }
         if (role.model != null && (typeof role.model !== 'string' || !role.model.trim())) fail(`roles.${name}.model: строка или null`);
+        if (role.effort != null && !ENUMS.reasoningEfforts.includes(role.effort)) {
+            fail(`roles.${name}.effort: ${ENUMS.reasoningEfforts.join(' | ')}`);
+        }
         if (role.imageModel != null && (typeof role.imageModel !== 'string' || !role.imageModel.trim())) fail(`roles.${name}.imageModel: строка или null`);
         if (role.vectorModel != null && (typeof role.vectorModel !== 'string' || !role.vectorModel.trim())) fail(`roles.${name}.vectorModel: строка или null`);
         if (role.instructions != null && typeof role.instructions !== 'string') fail(`roles.${name}.instructions: строка или null`);

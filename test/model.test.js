@@ -16,6 +16,7 @@ import {
     imageModelFamily,
     imageModelProfile,
 } from '../src/model/profiles.js';
+import { TEXT_MODEL_PROFILES, textModelProfile, snapEffort } from '../src/model/text.js';
 import { fallbackChain, fallbackModels, modelFallback } from '../src/model/fallback.js';
 import { imageRequestSize, paddedSizeToMinPixels } from '../src/image/sizing.js';
 
@@ -79,4 +80,45 @@ test('the chain of the models starts with the requested one', () => {
     assert.ok(chain.includes('openai/gpt-image-2.6-sunburst'));
     assert.ok(chain.includes('any/model'));
     assert.deepEqual(fallbackModels({ fallback: { enabled: false } }, 'x'), []);
+});
+
+test('a text model has a ceiling and a ladder of the efforts', () => {
+    const minimax = textModelProfile('minimax/minimax-m3.1-flash');
+    assert.equal(minimax.ceiling, 'xhigh');
+    assert.ok(minimax.efforts.includes('high'));
+    assert.equal(minimax.window, 1_000_000);
+    assert.equal(minimax.maxOutput, 524_288);
+    // Kimi is tuned for the speed of the answer: the ceiling is `medium`.
+    const kimi = TEXT_MODEL_PROFILES['moonshotai/kimi-k3.1-pro'];
+    assert.equal(kimi.ceiling, 'medium');
+    assert.equal(kimi.window, 1_000_000);
+    assert.equal(kimi.maxOutput, 944_000);
+    assert.ok(kimi.efforts.includes('none'), 'kimi takes the reasoning off without a refusal');
+    // A model the table does not know works in the middle of the ladder.
+    const unknown = textModelProfile('who/knows');
+    assert.equal(unknown.ceiling, 'medium');
+    assert.deepEqual(unknown.efforts, ['low', 'medium', 'high']);
+});
+
+test('an effort is pulled down to what the model takes', () => {
+    const luna = textModelProfile('openai/gpt-6-luna');
+    assert.equal(snapEffort('high', luna), 'medium', 'the ceiling of the model wins');
+    assert.equal(snapEffort('low', luna), 'low');
+    const terra = textModelProfile('openai/gpt-6.1-terra');
+    assert.equal(snapEffort('xhigh', terra), 'high');
+    const minimax = textModelProfile('minimax/minimax-m3.1-flash');
+    assert.equal(snapEffort('high', minimax), 'high');
+    assert.equal(snapEffort('xhigh', minimax), 'xhigh');
+    assert.equal(snapEffort('max', minimax), 'xhigh', 'the ceiling of the model wins');
+    assert.equal(
+        snapEffort('none', minimax),
+        'low',
+        'minimax refuses to work without reasoning, so the level is raised',
+    );
+    assert.equal(snapEffort('ultra', minimax), null, 'a level that is not on the ladder is not sent');
+    assert.equal(snapEffort(null, minimax), null);
+    // Kimi works at the ceiling of the run and keeps the reasoning off when it is asked to.
+    const kimi = textModelProfile('moonshotai/kimi-k3.1-pro');
+    assert.equal(snapEffort('high', kimi), 'medium');
+    assert.equal(snapEffort('none', kimi), 'none');
 });

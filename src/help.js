@@ -77,6 +77,13 @@ Background removal:
 Generation options:
   -m, --model <name>    Model override.
       --image-model <name>  Image model override.
+      --effort <level>   Reasoning effort of the text requests: none | minimal | low | medium |
+                         high | xhigh | max (high by default; the level is pulled down to what
+                         the model of the request really takes).
+      --summary <mode>   The summary of the reasoning: auto | concise | detailed (none by default).
+      --complexity <tier>  The complexity tier of the picture: auto | low | medium | high
+                         (auto by default — the tier of the model: high for gpt-image-2.6 and
+                         riverflow, nothing for the models that know no such field).
       --purpose <name>  Purpose: decompose | generate | edit | remove_background | upscale |
                         unrotate (aliases: isolate, isolate_object, rectify).
       --size <WxH>      Frame of the picture.

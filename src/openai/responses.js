@@ -21,12 +21,13 @@ const isRecord = (value) => value !== null && typeof value === 'object' && !Arra
  * `{ type: 'image_generation' }` — the host must run the picture tool instead of answering
  * with text.
  * @param {{ model?: string|null, instructions?: string|null, input?: unknown, tools?: object[]|null,
- *   toolChoice?: unknown, store?: boolean, stream?: boolean, text?: object|null }} [params]
+ *   toolChoice?: unknown, store?: boolean, stream?: boolean, text?: object|null,
+ *   effort?: string|null, summary?: string|null }} [params]
  * @returns {object}
  */
 export function buildResponsesBody({
     model = null, instructions = null, input = null, tools = null, toolChoice = null,
-    store = false, stream = false, text = null,
+    store = false, stream = false, text = null, effort = null, summary = null,
 } = {}) {
     const body = { model };
     if (instructions) body.instructions = instructions;
@@ -39,6 +40,14 @@ export function buildResponsesBody({
     // `text.format` — `text.type` is not a field of the request, and a host that follows the
     // spec answers with "Unknown parameter: 'text.type'".
     if (text) body.text = { format: text };
+    // How the model thinks: the effort of the request and the summary of the reasoning.
+    // The tier of the planning (`complexity`) is not a field of a text request — it belongs to
+    // the picture models, and it travels in the body of a picture request.
+    if (effort || summary) {
+        body.reasoning = {};
+        if (effort) body.reasoning.effort = effort;
+        if (summary) body.reasoning.summary = summary;
+    }
     return body;
 }
 

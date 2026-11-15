@@ -206,15 +206,23 @@ export function sniffImage(buffer) {
 
 /**
  * Resolve an image complexity tier: the caller's value when it names one, otherwise the
- * model's own default from the profile. `auto` and empty strings return null so the field is
- * omitted. Accepted values: `low`, `medium`, `high` — the default for models that support it is
- * `high`. Replaces the former `reasoning` and `quality` fields in the images API.
+ * model's own tier from the profile.
+ *
+ * A model that knows no such field gets nothing: the tier of the request follows the model, so
+ * `high` goes to the models that take it (gpt-image-2.6, riverflow) and stays away from the
+ * models that would refuse the whole request (seedream).
+ *
+ * `auto` and empty strings mean "the tier of the model" — `high` for the families that take it.
+ * Accepted values: `low`, `medium`, `high`.
  * @param {{ model: string, complexity?: string|null }} request
  * @returns {string|null}
  */
 export function imageComplexityValue({ model, complexity = null }) {
-    const value = String(complexity ?? imageModelProfile(model).complexity ?? '').trim().toLowerCase();
-    if (!value || value === 'auto') return null;
+    const profile = imageModelProfile(model);
+    // The model does not know the field: nothing goes out.
+    if (!profile.complexity) return null;
+    const value = String(complexity ?? '').trim().toLowerCase();
+    if (!value || value === 'auto') return profile.complexity;
     return value;
 }
 

@@ -97,6 +97,10 @@ export function fromEnv(env = process.env) {
     set(['image', 'rasterEngine'], env.AI_IMAGE_RASTER_ENGINE);
     set(['image', 'magickPath'], env.AI_IMAGE_MAGICK_PATH);
 
+    // --- reasoning -------------------------------------------------------------------
+    set(['reasoning', 'effort'], env.AI_IMAGE_EFFORT);
+    set(['reasoning', 'summary'], env.AI_IMAGE_SUMMARY);
+
     // --- limits -----------------------------------------------------------------
     const maxImageBytes = intInRange(env.AI_IMAGE_MAX_IMAGE_BYTES, KiB, 256 * MiB);
     if (maxImageBytes != null) set(['limits', 'maxImageBytes'], maxImageBytes);

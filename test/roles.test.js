@@ -144,6 +144,29 @@ test('the planner builds a strategy out of the answer of the model', async () =>
     assert.equal(result.strategy.crop.width, 3);
 });
 
+test('the effort of a role is the effort of the run, unless the role has its own', async () => {
+    const asked = [];
+    const client = {
+        responses: {
+            async create(params) {
+                asked.push(params);
+                return { output_text: JSON.stringify({ purpose: 'generate' }) };
+            },
+            text(response) {
+                return response.output_text ?? '';
+            },
+        },
+    };
+    const config = cloneDefaults();
+    await planStrategy({ client, config, task: 'a cat' });
+    assert.equal(asked[0].effort, 'high', 'the role works at the effort of the run');
+
+    const withEffort = cloneDefaults();
+    withEffort.roles.planner = { effort: 'low' };
+    await planStrategy({ client, config: withEffort, task: 'a cat' });
+    assert.equal(asked[1].effort, 'low', 'the role works at its own effort');
+});
+
 test('a nonsense answer of the planner is repaired', () => {
     const strategy = normalizeStrategy({
         purpose: 'nonsense',

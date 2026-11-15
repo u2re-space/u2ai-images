@@ -105,6 +105,16 @@ test('the flags of the configuration only carry what was given', () => {
     assert.deepEqual(given, { image: { size: '800x600', rasterEngine: 'sharp' } });
 });
 
+test('the reasoning of the run is a flag of the command', () => {
+    const options = parseArgv(['process', 'a cat', '--effort', 'low', '--complexity', 'medium']);
+    assert.equal(options.effort, 'low');
+    assert.equal(options.complexity, 'medium');
+    assert.equal(options.summary, null);
+    const overrides = configOverrides(options);
+    assert.deepEqual(overrides.reasoning, { effort: 'low' });
+    assert.deepEqual(overrides.image, { complexity: 'medium' });
+});
+
 test('the help and the version end with the code 0', async () => {
     const help = await run(process.execPath, [binary, '--help']);
     assert.match(help.stdout, /ai-image/);

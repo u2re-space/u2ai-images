@@ -30,6 +30,10 @@ export const ENUMS = Object.freeze({
     resolutions: Object.freeze(['512', '1K', '1.5K', '2K', '3K', '4K']),
     /** Complexity tiers a model understands. */
     complexities: Object.freeze(['auto', 'low', 'medium', 'high']),
+    /** Reasoning effort levels a text model may take. */
+    reasoningEfforts: Object.freeze(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']),
+    /** The summary of the reasoning of a text answer. */
+    reasoningSummaries: Object.freeze(['auto', 'concise', 'detailed']),
     /** Raster engines the local operations may use. */
     rasterEngines: Object.freeze(['auto', 'sharp', 'canvas', 'magick']),
     /** How the alpha channel of a picture is built. */

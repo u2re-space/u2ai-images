@@ -50,6 +50,7 @@ import {
     sameAspectImageSize,
 } from '../image/sizing.js';
 import { imageModelProfile } from '../model/profiles.js';
+import { textModelProfile, snapEffort } from '../model/text.js';
 import { resolvePurposeModel } from '../model/purpose.js';
 import { fallbackChain, isModelUnknown, isRouteUnsupported } from './fallback.js';
 import { aggregateFailure, createBackendPool } from './rotation.js';
@@ -1095,14 +1096,23 @@ export async function createClient({ config, env = process.env, signal = null, o
     async function responsesCreate({
         model = null, instructions = null, input = null, tools = null, toolChoice = null,
         store = false, text = null, signal: callSignal = null, batchable = false,
+        effort = null, summary = null,
     } = {}, { noBatch = false } = {}) {
         const wanted = model ?? config?.model ?? null;
         const chain = modelChain(wanted);
         const candidates = chain.length ? chain : (wanted ? [wanted] : []);
         let lastError = null;
         for (const [index, candidate] of candidates.entries()) {
+            // The effort of the request is pulled down to what the model really takes: a model
+            // with a lower ceiling refuses the level above it.
+            const level = snapEffort(
+                effort ?? config?.reasoning?.effort ?? null,
+                textModelProfile(candidate),
+            );
             const body = buildResponsesBody({
                 model: candidate, instructions, input, tools, toolChoice, store, text,
+                effort: level,
+                summary: summary ?? config?.reasoning?.summary ?? null,
             });
             // The name of the request is the hash of its body: the same question always has the
             // same name, in this run and in the next one.
@@ -1131,6 +1141,7 @@ export async function createClient({ config, env = process.env, signal = null, o
                     hash,
                     params: {
                         model: candidate, instructions, input, tools, toolChoice, store, text,
+                        effort, summary,
                         signal: callSignal,
                     },
                 });
@@ -1175,14 +1186,15 @@ export async function createClient({ config, env = process.env, signal = null, o
              * marked as batchable: the parser, which has to have its answer right now, is not.
              * @param {{ model?: string|null, instructions?: string|null, input?: unknown, tools?: object[]|null,
              *   toolChoice?: unknown, store?: boolean, text?: object|null, signal?: AbortSignal|null,
-             *   batchable?: boolean }} params
+             *   batchable?: boolean, effort?: string|null, summary?: string|null }} params
              * @returns {Promise<object>}
              */
             async create({ model = null, instructions = null, input = null, tools = null, toolChoice = null,
-                store = false, text = null, signal: callSignal = null, batchable = false } = {}) {
+                store = false, text = null, signal: callSignal = null, batchable = false,
+                effort = null, summary = null } = {}) {
                 return await responsesCreate({
                     model, instructions, input, tools, toolChoice, store, text,
-                    signal: callSignal, batchable,
+                    signal: callSignal, batchable, effort, summary,
                 });
             },
             /**
@@ -1210,6 +1222,9 @@ export async function createClient({ config, env = process.env, signal = null, o
             } = {}) {
                 const usedModel = resolveModel({ model, purpose });
                 if (!usedModel) throw new ApiError('No image model is configured.', { code: 'NO_MODEL' });
+                // The tier of the request: the caller's value, then the configured one, then the
+                // tier of the model itself. A model that knows no such field gets nothing.
+                const tier = complexity ?? config?.image?.complexity ?? null;
                 const vector = isSvgRequest({ model: usedModel, format });
                 const attempts = vector ? [] : imageSizeAttempts(size, usedModel, resolution);
                 const chain = modelChain(usedModel);
@@ -1217,7 +1232,7 @@ export async function createClient({ config, env = process.env, signal = null, o
                 // the same name, so the answer of the first phase serves the second one.
                 const hash = journal ? journal.hash({
                     kind: 'images.generate',
-                    model: usedModel, prompt, size, complexity, n, format, background, references, resolution,
+                    model: usedModel, prompt, size, complexity: tier, n, format, background, references, resolution,
                 }) : null;
                 if (hash) {
                     const cached = await journal.read(hash);
@@ -1242,7 +1257,7 @@ export async function createClient({ config, env = process.env, signal = null, o
                         const requestedSize = index < attempts.length ? attempts[index] : size;
                         try {
                             const answer = await generateOnce({
-                                model: candidate, prompt, size: requestedSize, complexity, n, format,
+                                model: candidate, prompt, size: requestedSize, complexity: tier, n, format,
                                 background, references, resolution, signal: callSignal,
                             });
                             const adapter = await rasterAdapter();
@@ -1293,6 +1308,9 @@ export async function createClient({ config, env = process.env, signal = null, o
                 const usedModel = resolveModel({ model, purpose });
                 if (!usedModel) throw new ApiError('No image model is configured.', { code: 'NO_MODEL' });
                 if (!files.length) throw new ApiError('The edit needs at least one source picture.', { code: 'INVALID_REQUEST' });
+                // The tier of the request: the caller's value, then the configured one, then the
+                // tier of the model itself. A model that knows no such field gets nothing.
+                const tier = complexity ?? config?.image?.complexity ?? null;
                 const vector = isSvgRequest({ model: usedModel, format });
                 const adapter = await rasterAdapter();
                 const profile = imageModelProfile(usedModel);
@@ -1361,7 +1379,7 @@ export async function createClient({ config, env = process.env, signal = null, o
                     model: usedModel,
                     prompt: text,
                     size,
-                    complexity,
+                    complexity: tier,
                     n,
                     format,
                     background,
@@ -1393,7 +1411,7 @@ export async function createClient({ config, env = process.env, signal = null, o
                         try {
                             const fields = buildEditFields({
                                 model: candidate, prompt: text, size: attemptSize, format, background,
-                                complexity, n, resolution, vector, sizeHint: sizeHintMode,
+                                complexity: tier, n, resolution, vector, sizeHint: sizeHintMode,
                             });
                             const answer = await editOnce({
                                 model: candidate, prompt: text, fields,

@@ -75,6 +75,8 @@ export async function run(ctx) {
         resolution,
         format,
         background,
+        complexity: config?.image?.complexity ?? 'auto',
+        effort: config?.reasoning?.effort ?? null,
         count,
         reference: options.image ?? null,
         output: target.target,

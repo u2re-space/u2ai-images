@@ -57,13 +57,13 @@ export function parseJsonAnswer(text) {
  * shape. The answer is checked anyway: a host that ignores the schema must not pass a broken
  * answer further into the pipeline.
  * @param {{ client: object, model?: string|null, instructions: string, input: unknown,
- *   schema: object, name?: string, signal?: AbortSignal|null }} options
+ *   schema: object, name?: string, signal?: AbortSignal|null, effort?: string|null }} options
  * @returns {Promise<{ data: object|null, text: string, valid: boolean, errors: string[] }>}
  * @exports
  * @ai.hint io
  */
 export async function askRole({
-    client, model = null, instructions, input, schema, name = 'answer', signal = null,
+    client, model = null, instructions, input, schema, name = 'answer', signal = null, effort = null,
 }) {
     const answer = await client.responses.create({
         model,
@@ -71,6 +71,8 @@ export async function askRole({
         input,
         text: schemaEnvelope(name, schema),
         signal,
+        // The reasoning effort of the role; the client pulls it down to what the model takes.
+        effort,
         // The answer of a role is a text request of the run: it may go out as a part of a batch.
         batchable: true,
     });

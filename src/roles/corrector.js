@@ -3,7 +3,7 @@
  * @module roles/corrector
  * @purpose The corrector: the result is checked against what was asked for, and a second attempt
  *          is proposed when the first one does not hold.
- * @depends agent/ask, agent/schemas, image/alpha, image/raster
+ * @depends agent/ask, agent/schemas, agent/effort, image/alpha, image/raster
  * @usedBy stages/correction, agent/pipeline
  * @exports CORRECTOR_INSTRUCTIONS, checkResult, judgeResult, decideRetry
  * @ai.tags roles, corrector
@@ -13,6 +13,7 @@
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { askRole } from '../agent/ask.js';
+import { effortFor } from '../agent/effort.js';
 import { CORRECTOR_SCHEMA } from '../agent/schemas.js';
 import { rasterInfo, rasterIsOpaque } from '../image/raster.js';
 import { sniffImage } from '../openai/images.js';
@@ -138,6 +139,7 @@ export async function judgeResult({
             schema: CORRECTOR_SCHEMA,
             name: 'verdict',
             signal,
+            effort: effortFor({ config, role: 'corrector' }),
         });
         if (!answer.data) return { issues: [], notes: answer.errors };
         const issues = Array.isArray(answer.data.issues)
