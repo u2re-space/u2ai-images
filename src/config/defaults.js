@@ -52,7 +52,7 @@ export const defaults = {
      */
     reasoning: {
         /** The reasoning effort of the text requests of the run. */
-        effort: 'low',
+        effort: 'medium',
         /** The summary of the reasoning of an answer; null sends no summary. */
         summary: 'auto',
     },
