@@ -54,8 +54,8 @@ test('the defaults are a valid configuration', () => {
 
 test('the reasoning of the run is checked field by field', () => {
     const config = structuredClone(defaults);
-    assert.equal(config.reasoning.effort, 'high', 'the run thinks hard by default');
-    assert.equal(config.reasoning.summary, null);
+    assert.equal(config.reasoning.effort, 'low', 'the run thinks hard by default');
+    assert.equal(config.reasoning.summary, 'auto');
     assert.equal(config.roles.default.effort, null, 'the roles inherit the effort of the run');
     assert.equal(config.image.quality, 'auto', 'the picture takes the tier of its model');
     assert.equal(config.image.complexity, 'auto', 'the old name of the tier is still read');

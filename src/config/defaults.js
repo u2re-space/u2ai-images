@@ -18,7 +18,7 @@ import { PURPOSE_MODEL_MAP } from '../model/purpose.js';
 export const defaults = {
     // --- models ---------------------------------------------------------------
     /** Text model: the agent roles and the AI parser talk through it. */
-    model: 'minimax/minimax-m3.1-flash',
+    model: 'moonshotai/kimi-k3.1-pro',//'minimax/minimax-m3.1-flash',
     /** Picture model: generate, edit and the technical alpha passes. */
     imageModel: 'bytedance-seed/seedream-5-5',
     /** Model of the AI parser; null keeps the text model. */
@@ -52,9 +52,9 @@ export const defaults = {
      */
     reasoning: {
         /** The reasoning effort of the text requests of the run. */
-        effort: 'high',
+        effort: 'low',
         /** The summary of the reasoning of an answer; null sends no summary. */
-        summary: null,
+        summary: 'auto',
     },
 
     // --- HTTP backends -------------------------------------------------------
