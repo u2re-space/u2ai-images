@@ -571,6 +571,8 @@ npm run test:network   # the calls to the real hosts (needs the keys)
 ```
 
 The network tests are behind `AI_IMAGE_NETWORK_TESTS=1` and are skipped by default.
+  The rest of the suite is guarded: `test/offline-guard.js` refuses every address outside
+  the machine, so a test that reaches the outside fails fast instead of spending money.
 
 ## License
 

@@ -20,7 +20,7 @@ const skip = enabled ? false : 'the network tests are off: AI_IMAGE_NETWORK_TEST
 
 test('a real host answers a generation', { skip }, async () => {
     const config = await loadConfig({ env: process.env, ensureHome: false });
-    const client = createClient({ config, env: process.env });
+    const client = await createClient({ config, env: process.env });
     try {
         const model = resolvePurposeModel(config, 'generate') ?? config?.imageModel ?? null;
         assert.ok(model, 'there is a model to ask');
