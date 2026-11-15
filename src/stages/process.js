@@ -94,7 +94,9 @@ export async function runProcessStage({
     }
     const bytes = Buffer.from(payload, 'base64');
     const kind = sniffImage(bytes);
-    const target = outputDir ? path.resolve(cwd, outputDir) : path.resolve(cwd, config?.image?.outputDir ?? '.');
+    const target = outputDir
+        ? path.resolve(cwd, outputDir)
+        : path.resolve(cwd, config?.image?.outputDir ?? '.ai/assets');
     const sink = createImageSink({ target, format, prefix: 'ai-image' });
     const saved = await sink.saveFinal('result', bytes, kind.ext === 'jpg' ? 'jpeg' : kind.ext);
     return {

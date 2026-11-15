@@ -3,7 +3,7 @@
  * @module image/alpha
  * @purpose Build a real alpha channel for a picture: the background is cut off, and the edge of
  *          the object keeps an anti-aliased transition instead of a halo.
- * @depends node:path, node:fs/promises, image/raster, openai/images, model/profiles
+ * @depends node:path, node:os, node:fs/promises, image/raster, openai/images, model/profiles
  * @usedBy commands/alpha, commands/background, commands/generate, commands/edit
  * @exports CUTOUT_PROMPT, cutoutPrompt, ALPHA_MODES, MATTE_MODELS,
  *          MIN_CLEARED_SHARE, MAX_SOFT_SHARE, MIN_SOFT_PIXELS, hasRealAlpha, localKeyAlpha,
@@ -21,8 +21,13 @@
  *    is the answer.
  * 3. The local contour matte, when the model is not there or refused.
  * 4. The fill from the corners, then the key by the color of the border.
+ *
+ * The work of the pipeline is temporary: the matte, the answer of the model, the merged alpha.
+ * It lives in the temporary directory of the system and not in the project — the project gets
+ * the picture and nothing else.
  */
 
+import os from 'node:os';
 import path from 'node:path';
 import { readFile, unlink, writeFile, copyFile } from 'node:fs/promises';
 import { sniffImage } from '../openai/images.js';
@@ -384,7 +389,7 @@ export async function isFakePlate({ engine = 'auto', base, cwd, signal }) {
 export async function localMatte({ engine = 'auto', base, cwd, signal, fake = false }) {
     const order = fake ? ['saturation', 'contour'] : ['contour', 'saturation'];
     for (const mode of order) {
-        const mask = path.join(cwd, `.tmp-alpha-${mode}-${process.pid}-${Date.now()}.png`);
+        const mask = path.join(os.tmpdir(), `ai-image-alpha-${mode}-${process.pid}-${Date.now()}.png`);
         try {
             const built = await rasterLocalAlphaMask({ input: base, output: mask, mode, cwd, signal, engine });
             if (built.changed) return { mask, reason: mode };
@@ -406,7 +411,7 @@ export async function localMatte({ engine = 'auto', base, cwd, signal, fake = fa
  * @ai.hint io
  */
 export async function flatAlphaFallback({ engine = 'auto', file, output = file, cwd, signal, feather = 1 }) {
-    const mask = path.join(cwd, `.tmp-alpha-flat-${process.pid}-${Date.now()}.png`);
+    const mask = path.join(os.tmpdir(), `ai-image-alpha-flat-${process.pid}-${Date.now()}.png`);
     try {
         const built = await rasterLocalAlphaMask({
             input: file, output: mask, mode: 'corners', cwd, signal, engine,
@@ -471,7 +476,7 @@ async function modelAlphaPass({ client, config, base, abs, cwd, signal, model, e
         }
         modelUsed = answer.model ?? modelUsed;
         // The answer is built aside: a picture that is not a cut-out must not reach the file.
-        const outPath = path.join(cwd, `.tmp-alpha-out-${process.pid}-${Date.now()}-${round}.png`);
+        const outPath = path.join(os.tmpdir(), `ai-image-alpha-out-${process.pid}-${Date.now()}-${round}.png`);
         try {
             // The file of the result is a PNG: a host that answered with another format is converted.
             const bytes = answer.ext === 'png'

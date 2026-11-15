@@ -23,6 +23,7 @@ import {
     pictureQuality,
     reportPlan,
     reportResult,
+    signPictures,
     usageError,
 } from './common.js';
 
@@ -178,6 +179,15 @@ export async function run(ctx) {
                 }
             }
         }
+
+        // The contract of the project: the pictures of this run and where they lie.
+        await signPictures({
+            cwd,
+            config,
+            files: files.map((file) => file.file),
+            renderer,
+            extra: { command: 'generate', model: answer.model ?? null },
+        });
 
         return reportResult({ options, renderer }, {
             command: 'generate',

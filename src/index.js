@@ -26,3 +26,27 @@ export {
 export { PURPOSE_NAMES, PURPOSE_MODEL_MAP } from './model/purpose.js';
 export { TEXT_MODEL_PROFILES, textModelProfile, snapEffort } from './model/text.js';
 export { effortFor } from './agent/effort.js';
+export { publishPictures, assetsRel } from './core/publish.js';
+export {
+    HOUSE_DIR,
+    HOUSE_TMP,
+    HOUSE_ASSETS,
+    HOUSE_LOGS,
+    HOUSE_WORK,
+    HOUSE_SYSTEMS,
+    MANIFEST_FILE,
+    MANIFEST_VERSION,
+    houseDir,
+    workRel,
+    workDir,
+    runStateDir,
+    assetsDir,
+    logsDir,
+    manifestPath,
+    toProjectPath,
+    readManifest,
+    writeManifest,
+    publish,
+    findGenerated,
+    writeFileAtomic,
+} from './shared/house.js';

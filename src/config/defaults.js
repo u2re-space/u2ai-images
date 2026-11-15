@@ -148,8 +148,13 @@ export const defaults = {
         frameDurationMs: null,
         /** The mask picture of an edit: the area of the source that is repainted. */
         mask: null,
-        /** Where the pictures are written, relative to the working directory. */
-        outputDir: '.',
+        /**
+         * Where the pictures are written, relative to the working directory.
+         *
+         * The pictures of the house live in the house: `.ai/assets/` is the default. The
+         * config may move them, and then it wins.
+         */
+        outputDir: '.ai/assets',
         /** Route of the picture: null follows the model, 'images' or 'responses'. */
         transport: null,
         /** The default purpose of a request that names none. */

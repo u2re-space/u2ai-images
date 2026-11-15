@@ -154,7 +154,7 @@ through it) and the default picture model is `bytedance-seed/seedream-5-5`.
     "size": "auto",
     "format": "png",
     "background": "auto",
-    "outputDir": ".",
+    "outputDir": ".ai/assets",
     "alphaMode": "auto",
     "quality": "auto"
   },
@@ -498,6 +498,58 @@ not opened, the dot-files are hidden unless they are asked for, the sizes are in
 path that does not exist yet answers with the nearest existing parent. `copy` copies a file or a
 tree under the same rules: no secret, no symbolic link, no directory into itself, and the
 destination must not exist unless `overwrite` is asked for.
+
+## The house of the project
+
+Every project has one directory of its own: `.ai/`. Everything a run makes that is not the
+product itself lives there, and nowhere else.
+
+```
+.ai/
+  assets/           the pictures the house makes
+  tmp/<run-id>/     the state of a run
+  logs/             the logs of the API calls
+  manifest.json     the contract of the project: what every system made and where it lies
+```
+
+The pictures of a run land in `.ai/assets/` — that is what `image.outputDir` says by default,
+and the config may move them elsewhere. The work of the alpha pipeline — the matte, the answer
+of the model, the merged alpha — is temporary: it lives in the temporary directory of the
+system and not in the project, so the project gets the picture and nothing else.
+
+The contract is how the systems of the house find each other. The images system signs its own
+part of `.ai/manifest.json` and never touches the part of another one:
+
+```json
+{
+  "manifestVersion": 1,
+  "updatedAt": "2026-11-15T03:41:02.113Z",
+  "systems": {
+    "images": {
+      "delivery": ".ai/assets/",
+      "artifacts": {
+        "assets": ".ai/assets",
+        "pictures": [".ai/assets/ai-image-20261115-141530-1.png"]
+      },
+      "command": "generate",
+      "updatedAt": "2026-11-15T03:40:58.002Z"
+    }
+  }
+}
+```
+
+The paths are relative to the project and with forward slashes: the contract is read on another
+machine and another system, and the path has to mean the same thing there. A run reads the
+contract first and only then the old paths of the config, so a delivery that moved is still
+found.
+
+The files of the house are written whole: the bytes go to a file next to the target and the
+target is replaced by a rename. A reader never sees half of a picture, and a run that dies in
+the middle leaves the old file and not a broken one.
+
+The model of the run is kept inside the working directory: every path it names is resolved
+first, so a path that leaves the directory, a secret file or a read-only directory is refused
+and the reason is named.
 
 ## Limits
 

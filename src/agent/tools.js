@@ -4,7 +4,7 @@
  * @purpose The tools of the agent: the pictures are made, cut, padded, fitted, cleaned and looked
  *          at through one interface.
  * @depends node:path, node:fs/promises, image/tools, image/alpha, image/vectorize, openai/client,
- *          agent/effort
+ *          agent/effort, access/paths, shared/house
  * @usedBy agent/pipeline, roles/processor
  * @exports TOOL_NAMES, createImageTools
  * @ai.tags agent, tools, images
@@ -14,6 +14,10 @@
  * The names of the monolith are kept: the agent of the monolith calls `generate_image`,
  * `edit_image`, `crop_image`, `split_image` and `compare_images`, and the same names work here.
  * Every tool answers with a plain object: what it did, what it wrote, and what it could not do.
+ *
+ * The paths of the model are never taken on faith: every one of them is resolved inside the
+ * working directory first. A path that leaves the directory, a secret file, a read-only
+ * directory — the tool refuses it and says why.
  */
 
 import path from 'node:path';
@@ -32,6 +36,8 @@ import { applyGeneratedAlphaMask } from '../image/alpha.js';
 import { vectorizePicture } from '../image/vectorize.js';
 import { sniffImage } from '../openai/images.js';
 import { effortFor } from './effort.js';
+import { resolveInside } from '../access/paths.js';
+import { writeFileAtomic } from '../shared/house.js';
 
 /** The names of the tools. */
 export const TOOL_NAMES = Object.freeze([
@@ -58,12 +64,20 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
     const maxBytes = config?.limits?.maxImageBytes ?? null;
 
     /**
-     * The path of a file of the working directory.
+     * The path of a file of the model: inside the working directory, and nowhere else.
+     *
+     * The rules are the rules of the access layer: the path may not leave the working
+     * directory, a secret is never touched, and a write may not go into a read-only
+     * directory.
      * @param {string} file
-     * @returns {string}
-     * @ai.hint pure
+     * @param {{ forWrite?: boolean }} [options]
+     * @returns {Promise<string>} the absolute path
+     * @ai.hint io
      */
-    const abs = (file) => (path.isAbsolute(String(file ?? '')) ? String(file) : path.resolve(cwd, String(file ?? '')));
+    const abs = async (file, { forWrite = false } = {}) => {
+        const { abs: inside } = await resolveInside(cwd, String(file ?? ''), { forWrite });
+        return inside;
+    };
 
     /**
      * The path of the result, relative to the working directory.
@@ -71,7 +85,17 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
      * @returns {string}
      * @ai.hint pure
      */
-    const rel = (file) => path.relative(cwd, abs(file)).split(path.sep).join('/');
+    const rel = (file) => path.relative(
+        cwd,
+        path.isAbsolute(String(file ?? '')) ? String(file) : path.resolve(cwd, String(file ?? '')),
+    ).split(path.sep).join('/');
+
+    /**
+     * The directory the pictures of the run land in.
+     * @returns {string} the absolute path
+     * @ai.hint pure
+     */
+    const assetsOf = () => path.resolve(cwd, config?.image?.outputDir ?? '.ai/assets');
 
     return {
         /**
@@ -94,12 +118,14 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
             for (const payload of answer.payloads ?? []) {
                 const bytes = Buffer.from(payload, 'base64');
                 const kind = sniffImage(bytes);
-                const target = args.output
-                    ? abs(args.output)
-                    : path.resolve(cwd, config?.image?.outputDir ?? '.', `ai-image-${files.length + 1}.${kind.ext}`);
-                const { writeFile, mkdir } = await import('node:fs/promises');
+                const asked = args.output
+                    ? args.output
+                    : path.join(assetsOf(), `ai-image-${files.length + 1}.${kind.ext}`);
+                // The write of the model is locked: it lands inside the working directory.
+                const target = await abs(asked, { forWrite: true });
+                const { mkdir } = await import('node:fs/promises');
                 await mkdir(path.dirname(target), { recursive: true });
-                await writeFile(target, bytes);
+                await writeFileAtomic(target, bytes);
                 files.push(rel(target));
             }
             return { files, model: answer.model ?? null, route: answer.route ?? null };
@@ -112,7 +138,7 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
          * @returns {Promise<object>}
          */
         async edit_image(args = {}) {
-            const source = abs(args.input);
+            const source = await abs(args.input);
             const bytes = await readFile(source);
             const kind = sniffImage(bytes);
             const answer = await client.images.edit({
@@ -127,10 +153,13 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
             for (const payload of answer.payloads ?? []) {
                 const out = Buffer.from(payload, 'base64');
                 const outKind = sniffImage(out);
-                const target = args.output ? abs(args.output) : path.resolve(cwd, `ai-image-edit.${outKind.ext}`);
-                const { writeFile, mkdir } = await import('node:fs/promises');
+                const asked = args.output
+                    ? args.output
+                    : path.join(assetsOf(), `ai-image-edit.${outKind.ext}`);
+                const target = await abs(asked, { forWrite: true });
+                const { mkdir } = await import('node:fs/promises');
                 await mkdir(path.dirname(target), { recursive: true });
-                await writeFile(target, out);
+                await writeFileAtomic(target, out);
                 files.push(rel(target));
             }
             return { files, model: answer.model ?? null, route: answer.route ?? null };
@@ -143,9 +172,10 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
          * @returns {Promise<object>}
          */
         async crop_image(args = {}) {
-            const output = args.output ? abs(args.output) : abs(args.input);
+            const input = await abs(args.input);
+            const output = args.output ? await abs(args.output, { forWrite: true }) : input;
             const result = await cropPicture({
-                input: abs(args.input),
+                input,
                 output,
                 x: args.x ?? 0,
                 y: args.y ?? 0,
@@ -166,9 +196,10 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
          * @returns {Promise<object>}
          */
         async pad_image(args = {}) {
-            const output = args.output ? abs(args.output) : abs(args.input);
+            const input = await abs(args.input);
+            const output = args.output ? await abs(args.output, { forWrite: true }) : input;
             const result = await padPicture({
-                input: abs(args.input),
+                input,
                 output,
                 width: args.width ?? null,
                 height: args.height ?? null,
@@ -187,9 +218,10 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
          * @returns {Promise<object>}
          */
         async fit_image(args = {}) {
-            const output = args.output ? abs(args.output) : abs(args.input);
+            const input = await abs(args.input);
+            const output = args.output ? await abs(args.output, { forWrite: true }) : input;
             const result = await fitPicture({
-                input: abs(args.input),
+                input,
                 output,
                 width: args.width,
                 height: args.height,
@@ -208,7 +240,8 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
          * @returns {Promise<object>}
          */
         async alpha_image(args = {}) {
-            const output = args.output ? abs(args.output) : abs(args.input);
+            const input = await abs(args.input);
+            const output = args.output ? await abs(args.output, { forWrite: true }) : input;
             const result = await applyGeneratedAlphaMask({
                 client,
                 config,
@@ -225,11 +258,14 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
          * @returns {Promise<object>}
          */
         async vectorize_image(args = {}) {
-            const output = args.output ? abs(args.output) : abs(`${args.input}.svg`);
+            const input = await abs(args.input);
+            const output = args.output
+                ? await abs(args.output, { forWrite: true })
+                : await abs(`${args.input}.svg`, { forWrite: true });
             const result = await vectorizePicture({
                 client,
                 config,
-                input: abs(args.input),
+                input,
                 output,
                 prompt: args.prompt ?? '',
                 model: args.model ?? config?.vectorModel ?? null,
@@ -246,9 +282,11 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
          * @returns {Promise<object>}
          */
         async compare_images(args = {}) {
-            const output = args.output ? abs(args.output) : path.resolve(cwd, 'comparison.png');
+            const output = args.output
+                ? await abs(args.output, { forWrite: true })
+                : await abs(path.join(assetsOf(), 'comparison.png'), { forWrite: true });
             const result = await comparePictures({
-                files: (args.files ?? []).map((file) => abs(file)),
+                files: await Promise.all((args.files ?? []).map((file) => abs(file))),
                 output,
                 cwd,
                 layout: args.layout ?? 'row',
@@ -276,7 +314,7 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
          * @returns {Promise<object>}
          */
         async view_image(args = {}) {
-            const source = abs(args.input);
+            const source = await abs(args.input);
             const bytes = await readFile(source);
             const kind = sniffImage(bytes);
             const answer = await client.responses.create({
@@ -304,8 +342,9 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
          * @returns {Promise<object>}
          */
         async info_image(args = {}) {
-            const info = await pictureInfo({ input: abs(args.input), cwd, engine });
-            return { file: rel(args.input), ...info };
+            const source = await abs(args.input);
+            const info = await pictureInfo({ input: source, cwd, engine });
+            return { file: rel(source), ...info };
         },
 
         /**
@@ -315,9 +354,10 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
          * @returns {Promise<object>}
          */
         async resize_image(args = {}) {
-            const output = args.output ? abs(args.output) : abs(args.input);
+            const input = await abs(args.input);
+            const output = args.output ? await abs(args.output, { forWrite: true }) : input;
             const result = await resizePicture({
-                input: abs(args.input),
+                input,
                 output,
                 width: args.width ?? null,
                 height: args.height ?? null,
@@ -337,9 +377,10 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
          * @returns {Promise<object>}
          */
         async trim_image(args = {}) {
-            const output = args.output ? abs(args.output) : abs(args.input);
+            const input = await abs(args.input);
+            const output = args.output ? await abs(args.output, { forWrite: true }) : input;
             const result = await trimPicture({
-                input: abs(args.input),
+                input,
                 output,
                 fuzz: args.fuzz ?? 6,
                 transparentOnly: args.transparentOnly === true,
@@ -357,9 +398,11 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
          * @returns {Promise<object>}
          */
         async split_image(args = {}) {
-            const outputDir = args.outputDir ? abs(args.outputDir) : path.resolve(cwd, 'tiles');
+            const outputDir = args.outputDir
+                ? await abs(args.outputDir, { forWrite: true })
+                : await abs(path.join(assetsOf(), 'tiles'), { forWrite: true });
             const result = await splitPicture({
-                input: abs(args.input),
+                input: await abs(args.input),
                 outputDir,
                 rows: args.rows ?? 1,
                 cols: args.cols ?? 1,

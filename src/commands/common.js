@@ -3,10 +3,11 @@
  * @module commands/common
  * @purpose The parts every command shares: the errors of the arguments, the output target, the
  *          format, the engine and the client.
- * @depends node:path, openai/client
+ * @depends node:path, openai/client, core/publish
  * @usedBy commands/*
  * @exports usageError, numberOption, pictureFormat, pictureQuality, outputTarget, engineOf,
- *          localTarget, batchSetup, createCommandClient, describeEvent, reportPlan, reportResult
+ *          localTarget, batchSetup, createCommandClient, describeEvent, reportPlan, reportResult,
+ *          signPictures
  * @ai.tags cli, commands
  * @ai.hint keep
  */
@@ -17,6 +18,7 @@ import { createClient } from '../openai/client.js';
 import { createJournal } from '../openai/journal.js';
 import { ApiError } from '../openai/errors.js';
 import { BATCH_NOT_READY } from '../openai/batch.js';
+import { publishPictures } from '../core/publish.js';
 
 /**
  * An error of the arguments: the command explains itself and the run ends with the code 2.
@@ -105,7 +107,7 @@ export function outputTarget({ options, config = null, cwd = process.cwd() }) {
         const target = path.resolve(cwd, options.out);
         return { target, dir: path.dirname(target), format };
     }
-    const dir = path.resolve(cwd, options.outDir ?? config?.image?.outputDir ?? '.');
+    const dir = path.resolve(cwd, options.outDir ?? config?.image?.outputDir ?? '.ai/assets');
     return { target: dir, dir, format };
 }
 
@@ -290,4 +292,26 @@ export function reportResult({ options, renderer }, result) {
     // The line of the report: what the command did, in one line a person can read.
     if (result.text) renderer.line('info', result.text);
     return 0;
+}
+
+/**
+ * Sign the contract of the project for the pictures of the run.
+ *
+ * The contract of the project is `.ai/manifest.json`: one file that says what every system
+ * of the house made and where it lies. The contract is a hint, not a reason to fail: a run
+ * that cannot write it warns and goes on.
+ * @param {{ cwd: string, config?: object|null, files?: string[], outputDir?: string|null,
+ *   renderer?: object|null, extra?: object }} ctx
+ * @returns {Promise<object|null>} the contract after the change, or null
+ * @exports
+ * @ai.hint io
+ */
+export async function signPictures({ cwd, config = null, files = [], outputDir = null, renderer = null,
+    extra = {} } = {}) {
+    try {
+        return await publishPictures({ cwd, config, files, outputDir, extra });
+    } catch (error) {
+        renderer?.line?.('warn', `The contract of the project was not written: ${error?.message ?? error}`);
+        return null;
+    }
 }

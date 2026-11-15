@@ -3,7 +3,7 @@
  * @module core/sink
  * @purpose Write the pictures of a run to disk: one file per result, the partial ones first and the
  *          final ones over them.
- * @depends node:path, node:fs/promises
+ * @depends node:path, node:fs/promises, shared/house
  * @usedBy commands/generate, commands/edit, commands/decorate
  * @exports createImageSink, timestampSlug
  * @ai.tags images, output
@@ -11,11 +11,13 @@
  * @ai.hint legacy-0.2
  *
  * The writes of one result are serialized: a late partial picture must never overwrite the final
- * one, and the order of the calls is the order of the files.
+ * one, and the order of the calls is the order of the files. Every picture appears whole: the
+ * bytes go to a file next to the target and the target is replaced by a rename.
  */
 
 import path from 'node:path';
-import { mkdir, stat, writeFile } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
+import { writeFileAtomic } from '../shared/house.js';
 
 /** The extension of every output format. */
 const EXT = { png: 'png', jpeg: 'jpg', jpg: 'jpg', webp: 'webp', gif: 'gif', svg: 'svg' };
@@ -87,7 +89,6 @@ export function createImageSink({ target = '.', format = 'png', prefix = 'ai-ima
             file = path.join(root, `${prefix}-${stamp}-${counter}.${ext}`);
         }
         paths.set(itemId, file);
-        await mkdir(path.dirname(file), { recursive: true });
         return file;
     }
 
@@ -109,7 +110,8 @@ export function createImageSink({ target = '.', format = 'png', prefix = 'ai-ima
             if (kind === 'partial' && finals.has(key)) return null;
             const file = await fileFor(key, outputFormat);
             const buffer = Buffer.isBuffer(payload) ? payload : Buffer.from(payload, 'base64');
-            await writeFile(file, buffer);
+            // The picture appears whole: a reader never sees half of it.
+            await writeFileAtomic(file, buffer);
             if (kind === 'final') finals.add(key);
             return { file, bytes: buffer.length };
         });

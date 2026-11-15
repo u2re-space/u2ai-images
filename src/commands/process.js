@@ -16,6 +16,7 @@ import {
     createCommandClient,
     reportPlan,
     reportResult,
+    signPictures,
     usageError,
 } from './common.js';
 
@@ -54,7 +55,7 @@ export async function run(ctx) {
         model,
         references: references.map((file) => path.relative(cwd, file).split(path.sep).join('/')),
         source: options.image ?? null,
-        output: options.outDir ?? config?.image?.outputDir ?? '.',
+        output: options.outDir ?? config?.image?.outputDir ?? '.ai/assets',
     };
     if (options.dryRun) return reportPlan({ options, renderer }, plan);
 
@@ -79,6 +80,16 @@ export async function run(ctx) {
             maxAttempts: 2,
             onStage: (stage) => renderer.line('info', `· ${stage.label}`),
         });
+        // The contract of the project: the pictures of this run and where they lie.
+        await signPictures({
+            cwd,
+            config,
+            files: report.files ?? [],
+            outputDir: options.outDir ?? null,
+            renderer,
+            extra: { command: 'process' },
+        });
+
         if (options.json) {
             renderer.json(report);
             return report.status === 'ok' ? 0 : 1;
