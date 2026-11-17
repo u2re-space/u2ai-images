@@ -117,10 +117,10 @@ test('a text model has a ceiling and a ladder of the efforts', () => {
     assert.equal(minimax.maxOutput, 524_288);
     // Kimi is tuned for the speed of the answer: the ceiling is `medium`.
     const kimi = TEXT_MODEL_PROFILES['moonshotai/kimi-k3.1-pro'];
-    assert.equal(kimi.ceiling, 'medium');
+    assert.equal(kimi.ceiling, 'high');
     assert.equal(kimi.window, 1_000_000);
     assert.equal(kimi.maxOutput, 944_000);
-    assert.ok(kimi.efforts.includes('none'), 'kimi takes the reasoning off without a refusal');
+    assert.ok(kimi.efforts.includes('low'), 'kimi takes the reasoning off without a refusal');
     // Gemini 4 Hydrogen: the levels of the effort are the four of the card of the vendor.
     const gemini = TEXT_MODEL_PROFILES['google/gemini-4-hydrogen'];
     assert.equal(gemini.ceiling, 'xhigh');
@@ -152,8 +152,8 @@ test('an effort is pulled down to what the model takes', () => {
     assert.equal(snapEffort(null, minimax), null);
     // Kimi works at the ceiling of the run and keeps the reasoning off when it is asked to.
     const kimi = textModelProfile('moonshotai/kimi-k3.1-pro');
-    assert.equal(snapEffort('high', kimi), 'medium');
-    assert.equal(snapEffort('none', kimi), 'none');
+    assert.equal(snapEffort('high', kimi), 'high');
+    assert.equal(snapEffort('none', kimi), 'low');
     // Gemini takes the four levels of its card; the reasoning off is raised to `low`.
     const gemini = textModelProfile('google/gemini-4-hydrogen');
     assert.equal(snapEffort('xhigh', gemini), 'xhigh');

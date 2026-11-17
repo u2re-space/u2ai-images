@@ -50,8 +50,8 @@ export const TEXT_MODEL_PROFILES = Object.freeze({
     'moonshotai/kimi-k3.1-pro': {
         window: 1_000_000,
         maxOutput: 944_000,
-        ceiling: 'medium',
-        efforts: ['none', 'low', 'medium'],
+        ceiling: 'high',
+        efforts: ['low', 'medium', 'high'],
     },
     'openai/gpt-6.1-sol': {
         window: 400_000,
