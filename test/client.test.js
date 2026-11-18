@@ -240,6 +240,24 @@ test('Seedream 5.5 edits get a scoped preservation instruction, not cut-outs or 
     }
 });
 
+test('Seedream 5.5 edit carries an explicitly requested transparent background field', async () => {
+    const host = await mockHost(() => ({ json: { data: [{ b64_json: TINY_PNG }] } }));
+    const client = await createClient({ config: configFor(host.baseURL) });
+    try {
+        await client.images.edit({
+            model: 'bytedance-seed/seedream-5-5',
+            purpose: 'edit',
+            prompt: 'Remove the background, preserving the requested object.',
+            background: 'transparent',
+            files: [{ filename: 'board.png', mime: 'image/png', bytes: Buffer.from(TINY_PNG, 'base64') }],
+        });
+        assert.match(host.requests[0].body, /name="background"\r\n\r\ntransparent/);
+    } finally {
+        client.close();
+        await host.close();
+    }
+});
+
 test('the plan of an edit: a legal frame goes as it is', () => {
     const plan = planEdit({ model: GPT, size: '1024x1024', sourceFrame: { width: 1024, height: 1024 } });
     assert.equal(plan.mode, 'direct');

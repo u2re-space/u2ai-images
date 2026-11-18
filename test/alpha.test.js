@@ -137,6 +137,29 @@ test('the shares of the alpha are measured', async () => {
     assert.equal(typeof verdict.soft, 'number');
 });
 
+test('almost opaque background pixels do not pass as a clean transparent cut-out', async () => {
+    const dir = await tempDir();
+    const file = path.join(dir, 'almost-opaque.png');
+    const size = 64;
+    const data = Buffer.alloc(size * size * 4);
+    for (let y = 0; y < size; y += 1) {
+        for (let x = 0; x < size; x += 1) {
+            const at = (y * size + x) * 4;
+            data[at] = 80;
+            data[at + 1] = 100;
+            data[at + 2] = 120;
+            // A transparent strip beside a background that is mistakenly alpha=253, not opaque.
+            data[at + 3] = x < size / 4 ? 0 : 253;
+        }
+    }
+    await writeFile(file, await encodeRgba({ width: size, height: size, data }, { format: 'png' }));
+
+    const verdict = await judgeAlphaShares({ abs: file, cwd: dir, totalPixels: size * size });
+    assert.equal(verdict.usable, false);
+    assert.ok(verdict.cleared > 0.03);
+    assert.ok(verdict.soft > 0.05, `almost-opaque background counts as a soft edge: ${verdict.soft}`);
+});
+
 test('the key by the color of the border cuts the plate off', async () => {
     const dir = await tempDir();
     const file = path.join(dir, 'a.png');

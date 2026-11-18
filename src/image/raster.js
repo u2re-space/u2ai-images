@@ -373,7 +373,7 @@ export async function rasterAlphaShare({ input, cwd = process.cwd(), engine = 'a
 }
 
 /**
- * The share of the frame whose alpha sits in the soft band (`4% <= alpha < 96%`).
+ * The share of the frame whose alpha sits in the soft band (`4% <= alpha < 100%`).
  *
  * A tight anti-aliased cut-out scores a fraction of a percent; a matte drawn with a wide glow
  * scores a fifth of the frame, which reads as a halo.
@@ -390,7 +390,7 @@ export async function rasterAlphaSoftShare({ input, cwd = process.cwd(), engine 
         let opaque = 0;
         let nonEmpty = 0;
         for (let i = 3; i < frame.data.length; i += 4) {
-            if (frame.data[i] >= 245) opaque++;
+            if (frame.data[i] === 255) opaque++;
             if (frame.data[i] >= 10) nonEmpty++;
         }
         return (nonEmpty - opaque) / total;

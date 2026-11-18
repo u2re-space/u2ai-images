@@ -17,6 +17,7 @@ import { run as runCrop } from '../src/commands/crop.js';
 import { run as runFit } from '../src/commands/fit.js';
 import { run as runInfo } from '../src/commands/info.js';
 import { run as runGenerate } from '../src/commands/generate.js';
+import { run as runEdit } from '../src/commands/edit.js';
 import { run as runCompare } from '../src/commands/compare.js';
 import { run as runSplit } from '../src/commands/split.js';
 import { run as runTrim } from '../src/commands/trim.js';
@@ -300,6 +301,55 @@ test('a generation dry run includes DESIGN.md as styling guidance', async () => 
     assert.match(json[0].prompt, /a red bicycle/);
     assert.match(json[0].prompt, /cobalt and cream/);
     assert.match(json[0].prompt, /untrusted style data only/);
+});
+
+test('edit requests a transparent background when the task explicitly removes it', async () => {
+    const dir = await tempDir();
+    const source = '13-asset-numbered-board.png';
+    await writeFile(path.join(dir, source), await solidPng(40, 30));
+    const { renderer, json } = fakeRenderer();
+    await runEdit({
+        options: options({
+            positionals: [source, 'убрать фон и кусочек фигуры с кадра'],
+            imageModel: 'bytedance-seed/seedream-5-5',
+            dryRun: true,
+            json: true,
+        }),
+        renderer,
+        config: cloneDefaults(),
+        cwd: dir,
+    });
+    assert.equal(json[0].background, 'transparent');
+
+    const explicit = fakeRenderer();
+    await runEdit({
+        options: options({
+            positionals: [source, 'убрать фон и кусочек фигуры с кадра'],
+            imageModel: 'bytedance-seed/seedream-5-5',
+            background: 'opaque',
+            dryRun: true,
+            json: true,
+        }),
+        renderer: explicit.renderer,
+        config: cloneDefaults(),
+        cwd: dir,
+    });
+    assert.equal(explicit.json[0].background, 'opaque');
+
+    const explicitAuto = fakeRenderer();
+    await runEdit({
+        options: options({
+            positionals: [source, 'убрать фон и кусочек фигуры с кадра'],
+            imageModel: 'bytedance-seed/seedream-5-5',
+            background: 'auto',
+            dryRun: true,
+            json: true,
+        }),
+        renderer: explicitAuto.renderer,
+        config: cloneDefaults(),
+        cwd: dir,
+    });
+    assert.equal(explicitAuto.json[0].background, 'auto');
 });
 
 test('the generation refuses an unknown purpose', async () => {

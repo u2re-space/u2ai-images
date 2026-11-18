@@ -78,7 +78,14 @@ export async function run(ctx) {
     const model = options.imageModel ?? resolvePurposeModel(config, purpose) ?? config?.imageModel ?? null;
     const size = options.size ?? null;
     const format = pictureFormat({ options, config });
-    const background = options.background ?? config?.image?.background ?? 'auto';
+    const configuredBackground = options.background ?? config?.image?.background ?? 'auto';
+    const backgroundWasExplicit = options.background !== null && options.background !== undefined
+        || config?.explicit?.image?.includes('background') === true;
+    const removeBackgroundRequested = purpose === 'remove_background'
+        || /(?:убрат(?:ь|и)?\s+(?:весь\s+)?фон|удалит(?:ь|е)\s+(?:весь\s+)?фон|сделат(?:ь|е)\s+фон\s+прозрачн|вырезат(?:ь|и)\s+[^.!?]{0,40}\s+из\s+фона|(?:remove|erase|delete)\s+(?:the\s+)?background|(?:cut\s+out|isolate)\s+(?:the\s+)?(?:subject|object))/i.test(prompt);
+    const background = !backgroundWasExplicit && configuredBackground === 'auto' && removeBackgroundRequested
+        ? 'transparent'
+        : configuredBackground;
     const quality = pictureQuality({ options, config });
     const seed = numberOption(options.seed ?? config?.image?.seed ?? null, '--seed', { min: 0 });
     const compression = numberOption(
@@ -177,6 +184,9 @@ export async function run(ctx) {
                     model: answer.model,
                 });
                 alpha.push({ file: saved.file, changed: built.changed, reason: built.reason });
+                if (!built.changed && built.reason !== 'already') {
+                    renderer.line('warn', `The alpha of ${path.basename(saved.file)} was not built: ${built.reason}.`);
+                }
             }
         }
 
