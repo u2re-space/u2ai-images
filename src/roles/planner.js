@@ -41,7 +41,7 @@ Decide:
 - pad — the canvas to extend the source to (width, height, color), or null. Never scale the source to fit a canvas: extend it to the right and to the bottom, and keep the content at its own scale at the canvas origin (0,0).
 - vectorize — whether the result has to become an SVG document. Only for a flat mark, a logo or an icon; never for a photograph.
 
-When a design brief or reference images are provided, treat them as the visual source of truth. Follow DESIGN.md for the style and use the attached image(s) directly; do not require measurements or call a measurer.
+Inspect every attached image before deciding the strategy. Source images are the actual inputs to process; visual reference images guide the requested appearance but do not replace the source. When a design brief or reference images are provided, treat them as visual guidance. Follow DESIGN.md for the style and use the attached image(s) directly; do not require measurements or call a measurer.
 
 Answer with the strategy alone. Do not generate anything.`;
 
@@ -137,14 +137,14 @@ export function normalizeStrategy(raw, config = null) {
  *
  * When the model is not there, or answers with something the pipeline cannot use, the default
  * strategy is used: a run without a plan is better than no run at all.
- * @param {{ client: object|null, config?: object|null, task: string, references?: string[],
+ * @param {{ client: object|null, config?: object|null, task: string, references?: string[], sources?: string[],
  *   model?: string|null, signal?: AbortSignal|null, cwd?: string, design?: string }} options
  * @returns {Promise<{ strategy: object, source: 'model'|'default', errors: string[] }>}
  * @exports
  * @ai.hint io
  */
 export async function planStrategy({
-    client = null, config = null, task, references = [], model = null, signal = null,
+    client = null, config = null, task, references = [], sources = [], model = null, signal = null,
     cwd = process.cwd(), design = '',
 }) {
     const fallback = defaultStrategy(config);
@@ -156,12 +156,14 @@ export async function planStrategy({
             type: 'input_text',
             text: [
                 withDesignDirection(`The task: ${task}`, design),
-                references.length ? `The reference images are attached: ${references.join(', ')}` : 'There are no reference images.',
+                sources.length ? `The source images to process are attached: ${sources.join(', ')}.` : '',
+                references.length ? `The visual reference images are attached: ${references.join(', ')}.` : '',
+                sources.length || references.length ? '' : 'There are no images attached.',
             ].join('\n'),
         },
     ];
-    for (const reference of references) {
-        const bytes = await readFile(path.resolve(cwd, reference)).catch(() => null);
+    for (const file of [...sources, ...references]) {
+        const bytes = await readFile(path.resolve(cwd, file)).catch(() => null);
         if (!bytes) continue;
         const kind = sniffImage(bytes);
         input.push({ type: 'input_image', image_url: `data:${kind.mime};base64,${bytes.toString('base64')}` });

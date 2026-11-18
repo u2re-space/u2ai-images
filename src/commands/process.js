@@ -126,6 +126,7 @@ export async function processReport(ctx) {
             config,
             task,
             references: options.references ?? [],
+            sources: options.image ? [path.resolve(cwd, options.image)] : [],
             cwd,
             home: config?.home ?? null,
         });

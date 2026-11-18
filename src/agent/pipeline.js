@@ -134,6 +134,7 @@ export async function runPipeline({
         config,
         task: state.task,
         references,
+        sources,
         design,
         cwd,
         model,

@@ -161,7 +161,88 @@ test('the planner builds a strategy and sees the optional design and reference i
     assert.equal(result.strategy.crop.width, 3);
     assert.match(JSON.stringify(requests[0].input), /use cobalt and cream/);
     assert.match(JSON.stringify(requests[0].input), /input_image/);
+    assert.match(requests[0].input[0].text, /visual reference images/);
     assert.match(PLANNER_INSTRUCTIONS, /do not require measurements or call a measurer/);
+});
+
+test('the planner sees source images as well as visual reference images', async () => {
+    const cwd = await tempDir();
+    const source = path.join(cwd, 'source.png');
+    const reference = path.join(cwd, 'reference.png');
+    const sourceBytes = await solidPng(7, 5);
+    const referenceBytes = await solidPng(9, 6);
+    await writeFile(source, sourceBytes);
+    await writeFile(reference, referenceBytes);
+    const requests = [];
+    const client = {
+        responses: {
+            async create(body) {
+                requests.push(body);
+                return { output_text: JSON.stringify({ purpose: 'edit' }) };
+            },
+            text(response) { return response.output_text ?? ''; },
+        },
+    };
+
+    await planStrategy({
+        client,
+        config: cloneDefaults(),
+        task: 'remove the background and keep the logo',
+        sources: ['source.png'],
+        references: ['reference.png'],
+        cwd,
+    });
+
+    const input = requests[0].input;
+    assert.match(input[0].text, /source images to process are attached: source\.png/);
+    assert.match(input[0].text, /visual reference images are attached: reference\.png/);
+    assert.equal(input.filter((part) => part.type === 'input_image').length, 2);
+    assert.ok(input.some((part) => part.image_url === `data:image/png;base64,${sourceBytes.toString('base64')}`));
+    assert.ok(input.some((part) => part.image_url === `data:image/png;base64,${referenceBytes.toString('base64')}`));
+});
+
+test('the pipeline gives its source image to the planner before processing it', async () => {
+    const cwd = await tempDir();
+    const source = await solidPng(8, 6);
+    await writeFile(path.join(cwd, 'source.png'), source);
+    const requests = [];
+    const client = {
+        responses: {
+            async create(request) {
+                requests.push(request);
+                return { output_text: JSON.stringify({
+                    purpose: 'edit', size: null, resolution: null, format: 'png', background: 'opaque',
+                    alphaMode: 'off', crop: null, pad: null, vectorize: false, rationale: 'edit the source',
+                }) };
+            },
+            text(response) { return response.output_text ?? ''; },
+        },
+        images: {
+            async generate() {
+                return { payloads: [Buffer.from(await solidPng(8, 6)).toString('base64')], model: 'test' };
+            },
+            async edit() {
+                return { payloads: [Buffer.from(await solidPng(8, 6)).toString('base64')], model: 'test' };
+            },
+        },
+    };
+
+    const report = await runPipeline({
+        client,
+        config: cloneDefaults(),
+        task: 'remove the background',
+        sources: ['source.png'],
+        cwd,
+        outputDir: '.out',
+        maxAttempts: 1,
+    });
+
+    assert.equal(report.status, 'ok');
+    assert.equal(report.strategySource, 'model');
+    assert.equal(report.strategy.purpose, 'edit');
+    assert.equal(requests.length, 1, 'the planner runs before image processing');
+    assert.ok(requests[0].input.some((part) => part.type === 'input_image'
+        && part.image_url === `data:image/png;base64,${source.toString('base64')}`));
 });
 
 test('the design direction guides image style without replacing the requested subject', () => {
