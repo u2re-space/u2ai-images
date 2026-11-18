@@ -58,6 +58,12 @@ export const TEXT_MODEL_PROFILES = Object.freeze({
         maxOutput: 128_000,
         ceiling: 'xhigh',
         efforts: ['low', 'medium', 'high', 'xhigh'],
+    }, 
+    'openai/gpt-6.2-sol': {
+        window: 400_000,
+        maxOutput: 128_000,
+        ceiling: 'xhigh',
+        efforts: ['low', 'medium', 'high', 'xhigh'],
     },
     'openai/gpt-6.1-terra': {
         window: 400_000,

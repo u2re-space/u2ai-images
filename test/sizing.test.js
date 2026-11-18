@@ -211,7 +211,7 @@ test('the payload of a request', () => {
     assert.equal(imageQualityValue({ model: 'unknown/model' }), null);
     assert.equal(imageQualityValue({ model: GPT, quality: 'max' }), 'max');
     assert.deepEqual(normalizeVectorRatio('landscape'), '4:3');
-    assert.deepEqual(svgConversionModel(GPT), { model: 'gpt-6.1-terra' });
+    assert.deepEqual(svgConversionModel(GPT), { model: 'gpt-6.2-sol' });
     assert.equal(svgConversionModel('recraft/recraft-v4.1-pro-vector'), null);
 });
 

@@ -38,7 +38,7 @@ export const RIVERFLOW_MODEL = 'sourceful/riverflow-v2.6-pro';
  * the `svg.model` field the host refuses the request outright
  * (`output_format "svg" requires svg.model`).
  */
-export const SVG_CONVERSION_MODEL = 'gpt-6.1-terra';
+export const SVG_CONVERSION_MODEL = 'gpt-6.2-sol';
 
 /**
  * The shapes the gpt-image family takes (the catalog of the gateway, November 2026).

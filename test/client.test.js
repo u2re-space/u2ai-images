@@ -406,7 +406,7 @@ test('the fields of an edit follow the family of the model', () => {
     assert.equal(raster.output_format, 'png');
     const vector = buildEditFields({ model: GPT, prompt: 'p', size: '1024x1024', vector: true });
     assert.equal(vector.output_format, 'svg');
-    assert.deepEqual(vector.svg, { model: 'gpt-6.1-terra' });
+    assert.deepEqual(vector.svg, { model: 'gpt-6.2-sol' });
     const tier = buildEditFields({ model: RIVERFLOW, prompt: 'p', size: '2K' });
     assert.equal(tier.resolution, '2K');
     assert.equal(tier.size, undefined);
