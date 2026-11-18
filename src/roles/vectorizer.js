@@ -11,7 +11,7 @@
  */
 
 import path from 'node:path';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, mkdtemp, rename, rm, stat } from 'node:fs/promises';
 import { assessVectorSource, vectorizePicture } from '../image/vectorize.js';
 import { rasterColorCount, rasterInfo } from '../image/raster.js';
 import { svgToPng } from '../image/svg.js';
@@ -31,13 +31,15 @@ A document that does not open is worse than no document: check the XML before yo
  * The transparent padding around a logo is noise for the tracing and noise in the document: it
  * is cut off first. The palette is counted, so a photograph is not traced into a document nobody
  * can edit.
- * @param {{ input: string, cwd?: string, config?: object|null, maxColors?: number|null }} options
+ * @param {{ input: string, cwd?: string, config?: object|null, maxColors?: number|null,
+ *   tempDir?: string|null }} options
  * @returns {Promise<{ file: string, colors: number|null, suitable: boolean, reason: string,
  *   trimmed: boolean }>}
  * @exports
  * @ai.hint io
  */
-export async function prepareRaster({ input, cwd = process.cwd(), config = null, maxColors = null }) {
+export async function prepareRaster({ input, cwd = process.cwd(), config = null, maxColors = null,
+    tempDir = null }) {
     const abs = path.resolve(cwd, input);
     const ceiling = maxColors ?? config?.image?.vectorMaxColors ?? 256;
     const engine = config?.image?.rasterEngine ?? 'auto';
@@ -48,7 +50,7 @@ export async function prepareRaster({ input, cwd = process.cwd(), config = null,
     // document as an empty rectangle.
     try {
         const { trimPicture } = await import('../image/tools.js');
-        const trimmedTo = path.join(path.dirname(abs), `${path.parse(abs).name}-trim.png`);
+        const trimmedTo = path.join(tempDir ?? path.dirname(abs), `${path.parse(abs).name}-trim.png`);
         const result = await trimPicture({
             input: abs,
             output: trimmedTo,
@@ -100,45 +102,62 @@ export async function checkDocument({ bytes }) {
  * Trace a raster into an SVG document and write it.
  * @param {{ client: object, config?: object|null, input: string, output: string,
  *   cwd?: string, signal?: AbortSignal|null, model?: string|null, prompt?: string }} options
- * @returns {Promise<{ path: string, colors: number|null, suitable: boolean, ok: boolean,
- *   reason: string, notes: string[] }>}
+ * @returns {Promise<{ path: string|null, model: string|null, colors: number|null,
+ *   suitable: boolean, ok: boolean, reason: string, notes: string[] }>}
  * @exports
  * @ai.hint io
  */
 export async function vectorizeAsset({
     client, config = null, input, output, cwd = process.cwd(), signal = null, model = null, prompt = '',
+    maxBytes = config?.limits?.maxImageBytes ?? null,
 }) {
     const notes = [];
-    const prepared = await prepareRaster({ input, cwd, config });
-    if (!prepared.suitable) {
-        notes.push(`the source has ${prepared.colors} colors: the tracing may be heavy.`);
+    const inputAbs = path.resolve(cwd, input);
+    const inputInfo = await stat(inputAbs);
+    if (maxBytes && inputInfo.size > maxBytes) {
+        throw new Error(`The picture is larger than the limit of ${maxBytes} bytes: ${input}`);
     }
-    const result = await vectorizePicture({
-        client,
-        config,
-        input: prepared.file,
-        output,
-        prompt,
-        model,
-        cwd,
-        signal,
-        maxBytes: config?.limits?.maxImageBytes ?? null,
-    });
-    const bytes = await readFile(path.resolve(cwd, result.rel)).catch(() => null);
-    const check = bytes
-        ? await checkDocument({ bytes })
-        : { ok: false, reason: 'the document was not written', width: null, height: null };
-    if (!check.ok) {
-        notes.push(check.reason);
+    const outputAbs = path.resolve(cwd, output);
+    await mkdir(path.dirname(outputAbs), { recursive: true });
+    const tempDir = await mkdtemp(path.join(path.dirname(outputAbs), '.ai-vectorize-'));
+    try {
+        const prepared = await prepareRaster({ input: inputAbs, cwd, config, tempDir });
+        if (!prepared.suitable) {
+            notes.push(`the source has ${prepared.colors} colors: the tracing may be heavy.`);
+        }
+        const temporarySvg = path.join(tempDir, path.basename(outputAbs));
+        const result = await vectorizePicture({
+            client,
+            config,
+            input: prepared.file,
+            output: temporarySvg,
+            prompt,
+            model,
+            cwd,
+            signal,
+            maxBytes,
+        });
+        const bytes = await readFile(temporarySvg).catch(() => null);
+        const check = bytes
+            ? await checkDocument({ bytes })
+            : { ok: false, reason: 'the document was not written', width: null, height: null };
+        if (!check.ok) {
+            notes.push(check.reason);
+        } else {
+            await rename(temporarySvg, outputAbs);
+        }
+        return {
+            path: check.ok ? path.relative(cwd, outputAbs).split(path.sep).join('/') : null,
+            model: result.model,
+            colors: prepared.colors,
+            suitable: prepared.suitable,
+            ok: check.ok,
+            reason: check.reason,
+            notes,
+        };
+    } finally {
+        await rm(tempDir, { recursive: true, force: true });
     }
-    return {
-        path: result.rel,
-        colors: prepared.colors,
-        suitable: prepared.suitable,
-        ok: check.ok,
-        reason: check.reason,
-        notes,
-    };
 }
 
 /**

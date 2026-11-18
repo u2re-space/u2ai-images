@@ -9,7 +9,7 @@
  */
 
 import path from 'node:path';
-import { vectorizePicture } from '../image/vectorize.js';
+import { vectorizeAsset } from '../roles/vectorizer.js';
 import {
     createCommandClient,
     reportPlan,
@@ -44,7 +44,7 @@ export async function run(ctx) {
 
     const client = await createCommandClient({ config, env, renderer, options, cwd });
     try {
-        const result = await vectorizePicture({
+        const result = await vectorizeAsset({
             client,
             config,
             input: path.resolve(cwd, input),
@@ -57,12 +57,25 @@ export async function run(ctx) {
         if (!result.suitable) {
             renderer.line('warn', `The picture has ${result.colors} colors: the tracing may be heavy.`);
         }
+        if (!result.ok) {
+            renderer.line('warn', `The SVG was not saved: ${result.reason}.`);
+            return options.json
+                ? (renderer.json({
+                    type: 'result',
+                    status: 'failed',
+                    command: 'vectorize',
+                    model: result.model,
+                    colors: result.colors,
+                    error: { message: result.reason },
+                }), 1)
+                : 1;
+        }
         return reportResult({ options, renderer }, {
             command: 'vectorize',
             model: result.model,
             colors: result.colors,
-            files: [result.rel],
-            text: `${result.rel}: ${result.colors ?? '?'} colors`,
+            files: [result.path],
+            text: `${result.path}: ${result.colors ?? '?'} colors`,
         });
     } finally {
         client.close();
