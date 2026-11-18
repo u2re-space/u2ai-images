@@ -18,7 +18,7 @@ import { PURPOSE_MODEL_MAP } from '../model/purpose.js';
 export const defaults = {
     // --- models ---------------------------------------------------------------
     /** Text model: the agent roles and the AI parser talk through it. */
-    model: 'google/gemini-4-hydrogen',//'minimax/minimax-m3.1-flash',
+    model: 'openai/gpt-6.2-sol',//'minimax/minimax-m3.1-flash',
     /** Picture model: generate, edit and the technical alpha passes. */
     imageModel: 'bytedance-seed/seedream-5-5',
     /** Model of the AI parser; null keeps the text model. */
