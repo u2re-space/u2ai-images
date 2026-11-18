@@ -57,8 +57,8 @@ test('the reasoning of the run is checked field by field', () => {
     assert.equal(config.reasoning.effort, 'medium', 'the run thinks hard by default');
     assert.equal(config.reasoning.summary, 'auto');
     assert.equal(config.roles.default.effort, null, 'the roles inherit the effort of the run');
-    assert.equal(config.image.quality, 'auto', 'the picture takes the tier of its model');
-    assert.equal(config.image.complexity, 'auto', 'the old name of the tier is still read');
+    assert.equal(config.image.quality, 'high', 'the picture takes the tier of its model');
+    assert.equal(config.image.complexity, 'high', 'the old name of the tier is still read');
 
     assert.throws(
         () => validateConfig({ ...config, reasoning: { ...config.reasoning, effort: 'ultra' } }),

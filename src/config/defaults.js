@@ -124,14 +124,14 @@ export const defaults = {
          * the tier is cut down to the ladder of the model, so a request for `max` on a model that
          * stops at `high` goes out as `high`.
          */
-        quality: 'auto',
+        quality: 'high',
         /**
          * The deprecated name of `quality`.
          *
          * The older builds wrote the tier of the planning into `image.complexity`; the field is
          * still read when `quality` is left at `auto`, so the old configuration keeps working.
          */
-        complexity: 'auto',
+        complexity: 'high',
         /** Format of the written file. */
         format: 'png',
         /** Background of a generated picture. */
