@@ -131,9 +131,10 @@ Configuration:
   AI_IMAGE_*              Environment overrides (AI_IMAGE_HOME changes the directory).
 
 Examples:
-  ai-image vectorize example.png --image-model openai/gpt-image-2.6-sunburst
+  ai-image vectorize example.png --image-model openai/gpt-image-2.6-sunburst --background transparent
   ai-image generate "a red bicycle leaning on a wall" --size 1024x1024
   ai-image edit photo.png "make the sky stormy" --purpose edit
+  ai-image edit photo.png "remove uncertain objects and remove background" --background transparent
   ai-image crop photo.png --x 10 --y 20 --width 640 --height 480 --out cut.png
   ai-image trim photo.png --transparent-only --out tight.png
   ai-image fit photo.png --width 1200 --height 800 --mode cover
