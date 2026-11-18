@@ -15,6 +15,7 @@ import { createImageSink } from '../core/sink.js';
 import { canonicalPurpose, PURPOSE_NAMES, resolvePurposeModel } from '../model/purpose.js';
 import { applyGeneratedAlphaMask, alphaFormatWarning } from '../image/alpha.js';
 import { sniffImage } from '../openai/images.js';
+import { readDesignDirection, withDesignDirection } from '../core/design.js';
 import {
     createCommandClient,
     numberOption,
@@ -40,6 +41,8 @@ export async function run(ctx) {
     if (!prompt) {
         throw usageError('Give a prompt: `ai-image generate "a red bicycle on the snow", or pipe it into stdin.');
     }
+    const design = await readDesignDirection(cwd);
+    const effectivePrompt = withDesignDirection(prompt, design);
 
     const asked = options.purpose ?? config?.image?.purpose ?? null;
     const purpose = canonicalPurpose(asked);
@@ -102,7 +105,7 @@ export async function run(ctx) {
 
     const plan = {
         command: 'generate',
-        prompt,
+        prompt: effectivePrompt,
         model,
         purpose,
         size,
@@ -132,7 +135,7 @@ export async function run(ctx) {
         const answer = await client.images.generate({
             model,
             purpose,
-            prompt,
+            prompt: effectivePrompt,
             size,
             resolution,
             n: count,
@@ -191,6 +194,7 @@ export async function run(ctx) {
 
         return reportResult({ options, renderer }, {
             command: 'generate',
+            prompt: effectivePrompt,
             model: answer.model,
             route: answer.route,
             purpose,

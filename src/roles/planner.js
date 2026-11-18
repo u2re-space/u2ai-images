@@ -10,11 +10,15 @@
  * @ai.hint keep
  */
 
+import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { askRole } from '../agent/ask.js';
 import { effortFor } from '../agent/effort.js';
 import { PLANNER_SCHEMA } from '../agent/schemas.js';
 import { canonicalPurpose, PURPOSE_NAMES } from '../model/purpose.js';
 import { isBatchStop } from '../openai/batch.js';
+import { sniffImage } from '../openai/images.js';
+import { withDesignDirection } from '../core/design.js';
 
 /**
  * The instructions of the planner.
@@ -36,6 +40,8 @@ Decide:
 - crop — what to do with the source before the model sees it: a box (x, y, width, height), a trim (cut the uniform or transparent padding off), or null when the source is ready.
 - pad — the canvas to extend the source to (width, height, color), or null. Never scale the source to fit a canvas: extend it to the right and to the bottom, and keep the content at its own scale at the canvas origin (0,0).
 - vectorize — whether the result has to become an SVG document. Only for a flat mark, a logo or an icon; never for a photograph.
+
+When a design brief or reference images are provided, treat them as the visual source of truth. Follow DESIGN.md for the style and use the attached image(s) directly; do not require measurements or call a measurer.
 
 Answer with the strategy alone. Do not generate anything.`;
 
@@ -132,22 +138,34 @@ export function normalizeStrategy(raw, config = null) {
  * When the model is not there, or answers with something the pipeline cannot use, the default
  * strategy is used: a run without a plan is better than no run at all.
  * @param {{ client: object|null, config?: object|null, task: string, references?: string[],
- *   model?: string|null, signal?: AbortSignal|null }} options
+ *   model?: string|null, signal?: AbortSignal|null, cwd?: string, design?: string }} options
  * @returns {Promise<{ strategy: object, source: 'model'|'default', errors: string[] }>}
  * @exports
  * @ai.hint io
  */
 export async function planStrategy({
     client = null, config = null, task, references = [], model = null, signal = null,
+    cwd = process.cwd(), design = '',
 }) {
     const fallback = defaultStrategy(config);
     if (!client?.responses) {
         return { strategy: fallback, source: 'default', errors: ['no text model is configured'] };
     }
     const input = [
-        `The task: ${task}`,
-        references.length ? `The references: ${references.join(', ')}` : 'There are no references.',
-    ].join('\n');
+        {
+            type: 'input_text',
+            text: [
+                withDesignDirection(`The task: ${task}`, design),
+                references.length ? `The reference images are attached: ${references.join(', ')}` : 'There are no reference images.',
+            ].join('\n'),
+        },
+    ];
+    for (const reference of references) {
+        const bytes = await readFile(path.resolve(cwd, reference)).catch(() => null);
+        if (!bytes) continue;
+        const kind = sniffImage(bytes);
+        input.push({ type: 'input_image', image_url: `data:${kind.mime};base64,${bytes.toString('base64')}` });
+    }
     try {
         const answer = await askRole({
             client,

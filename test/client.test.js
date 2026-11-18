@@ -103,6 +103,24 @@ test('a generation asks the images route and reads the payload', async () => {
     }
 });
 
+test('generation carries file references as image inputs', async () => {
+    const host = await mockHost(() => ({ json: { data: [{ b64_json: TINY_PNG }] } }));
+    const client = await createClient({ config: configFor(host.baseURL) });
+    try {
+        await client.images.generate({
+            model: GPT,
+            prompt: 'a poster in the visual style of the reference',
+            referenceFiles: [{ filename: 'landing.png', mime: 'image/png', bytes: Buffer.from(TINY_PNG, 'base64') }],
+        });
+        const body = JSON.parse(host.requests.at(-1).body);
+        assert.equal(body.input_references.length, 1);
+        assert.equal(body.input_references[0].image_url.url.startsWith('data:image/png;base64,'), true);
+    } finally {
+        client.close();
+        await host.close();
+    }
+});
+
 test('a host without the images route is asked through the Responses API', async () => {
     const host = await mockHost((req) => {
         if (req.url.endsWith('/images/generations')) {
@@ -189,6 +207,33 @@ test('an edit sends a multipart body and the fields of the model', async () => {
         assert.match(request.headers['content-type'], /multipart\/form-data/);
         assert.match(request.body, /name="image"; filename="shot\.png"/);
         assert.match(request.body, /name="prompt"\r\n\r\nmake it evening/);
+    } finally {
+        client.close();
+        await host.close();
+    }
+});
+
+test('Seedream 5.5 edits get a scoped preservation instruction, not cut-outs or other models', async () => {
+    const host = await mockHost(() => ({ json: { data: [{ b64_json: TINY_PNG }] } }));
+    const fakeRaster = {
+        padImageBytes: async ({ bytes }) => ({ bytes, padded: false }),
+        fitToFrame: async ({ bytes }) => bytes,
+    };
+    const client = await createClient({ config: configFor(host.baseURL), raster: fakeRaster });
+    try {
+        const files = [{ filename: 'shot.png', mime: 'image/png', bytes: Buffer.from(TINY_PNG, 'base64') }];
+        await client.images.edit({ model: 'bytedance-seed/seedream-5-5', purpose: 'edit', prompt: 'Remove the red mark only.', files });
+        await client.images.edit({ model: GPT, purpose: 'edit', prompt: 'Remove the red mark only.', files });
+        await client.images.edit({ model: 'bytedance-seed/seedream-5-5', purpose: 'remove_background', prompt: 'Cut out the bishop.', files });
+
+        const seedreamPrompt = /name="prompt"\r\n\r\n([\s\S]*?)\r\n--/.exec(host.requests[0].body)?.[1] ?? '';
+        const otherModelPrompt = /name="prompt"\r\n\r\n([\s\S]*?)\r\n--/.exec(host.requests[1].body)?.[1] ?? '';
+        const cutoutPrompt = /name="prompt"\r\n\r\n([\s\S]*?)\r\n--/.exec(host.requests[2].body)?.[1] ?? '';
+        assert.match(seedreamPrompt, /^Remove the red mark only\./);
+        assert.match(seedreamPrompt, /Preserve every unmentioned object, fragment, edge, color, texture, position and opacity/);
+        assert.match(seedreamPrompt, /remove only that exact item/);
+        assert.equal(otherModelPrompt, 'Remove the red mark only.');
+        assert.equal(cutoutPrompt, 'Cut out the bishop.');
     } finally {
         client.close();
         await host.close();

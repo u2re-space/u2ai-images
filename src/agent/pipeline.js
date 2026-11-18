@@ -20,6 +20,7 @@ import { processAssets } from '../roles/processor.js';
 import { checkResult } from '../roles/corrector.js';
 import { readNotes, summarizeNotes, suggestStrategy, writeNote } from '../roles/learner.js';
 import { createImageTools } from './tools.js';
+import { readDesignDirection } from '../core/design.js';
 
 /**
  * The stages of the run, in the order they run.
@@ -106,6 +107,7 @@ export async function runPipeline({
         summary: '',
         error: null,
     };
+    const design = await readDesignDirection(cwd);
     /** The stage that is running, for the report of the live output. */
     const stage = (id) => {
         const found = STAGE_ORDER.find((item) => item.id === id);
@@ -132,6 +134,8 @@ export async function runPipeline({
         config,
         task: state.task,
         references,
+        design,
+        cwd,
         model,
         signal,
     });
@@ -157,6 +161,8 @@ export async function runPipeline({
         plan: state.strategy,
         sources,
         cwd,
+        references,
+        design,
         outputDir,
         signal,
         withModel,

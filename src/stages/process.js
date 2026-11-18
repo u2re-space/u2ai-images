@@ -14,24 +14,27 @@ import { readFile } from 'node:fs/promises';
 import { createImageSink } from '../core/sink.js';
 import { sniffImage } from '../openai/images.js';
 import { resolvePurposeModel } from '../model/purpose.js';
+import { withDesignDirection } from '../core/design.js';
 
 /**
  * Ask the model for the picture and write it down.
  *
- * With a source the request is an edit, without one it is a generation. The prompt of the run
- * travels as it is: the model gets the task, not a rewritten version of it.
+ * With a source the request is an edit, without one it is a generation. The task stays intact;
+ * optional design notes and reference images guide only the visual style.
  * @param {{ client: object, config?: object|null, plan: object, task: string,
- *   sources?: string[], cwd?: string, outputDir?: string, signal?: AbortSignal|null }} options
+ *   sources?: string[], references?: string[], design?: string, cwd?: string,
+ *   outputDir?: string, signal?: AbortSignal|null }} options
  * @returns {Promise<{ file: string|null, model: string|null, route: string|null, payload: string|null,
  *   notes: string[] }>}
  * @exports
  * @ai.hint io
  */
 export async function runProcessStage({
-    client, config = null, plan = {}, task, sources = [], cwd = process.cwd(), outputDir = null, signal = null,
+    client, config = null, plan = {}, task, sources = [], references = [], design = '',
+    cwd = process.cwd(), outputDir = null, signal = null,
 }) {
     const notes = [];
-    const purpose = plan?.purpose ?? 'generate';
+    const purpose = plan?.purpose ?? (sources.length ? 'edit' : 'generate');
     const model = resolvePurposeModel(config, purpose) ?? config?.imageModel ?? null;
     const size = plan?.size ?? null;
     const resolution = plan?.resolution ?? null;
@@ -58,14 +61,25 @@ export async function runProcessStage({
     };
 
     const files = await readSources();
+    const referenceFiles = [];
+    for (const reference of references) {
+        const abs = path.resolve(cwd, reference);
+        const bytes = await readFile(abs).catch(() => null);
+        if (bytes) referenceFiles.push({ filename: path.basename(abs), mime: sniffImage(bytes).mime, bytes });
+        else notes.push(`${reference}: the reference is not readable.`);
+    }
+    const referenceNote = references.length
+        ? `\n\nReference images for visual guidance (do not copy their subject unless the task asks): ${references.join(', ')}.`
+        : '';
+    const prompt = `${withDesignDirection(task, design)}${referenceNote}`;
     let answer;
     try {
         answer = files.length
             ? await client.images.edit({
                 model,
                 purpose,
-                prompt: task,
-                files,
+                prompt,
+                files: [...files, ...referenceFiles],
                 size,
                 resolution,
                 format,
@@ -75,11 +89,12 @@ export async function runProcessStage({
             : await client.images.generate({
                 model,
                 purpose,
-                prompt: task,
+                prompt,
                 size,
                 resolution,
                 format,
                 background,
+                referenceFiles,
                 signal,
             });
     } catch (error) {

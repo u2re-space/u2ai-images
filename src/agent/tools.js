@@ -143,6 +143,7 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
             const kind = sniffImage(bytes);
             const answer = await client.images.edit({
                 model: args.model ?? config?.imageModel ?? null,
+                purpose: 'edit',
                 prompt: args.prompt ?? '',
                 files: [{ filename: path.basename(source), mime: kind.mime, bytes }],
                 size: args.size ?? null,

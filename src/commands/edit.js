@@ -15,6 +15,7 @@ import { createImageSink } from '../core/sink.js';
 import { canonicalPurpose, PURPOSE_NAMES, resolvePurposeModel } from '../model/purpose.js';
 import { applyGeneratedAlphaMask, alphaFormatWarning } from '../image/alpha.js';
 import { sniffImage } from '../openai/images.js';
+import { readDesignDirection, withDesignDirection } from '../core/design.js';
 import {
     createCommandClient,
     numberOption,
@@ -65,9 +66,11 @@ export async function run(ctx) {
     if (!prompt) {
         throw usageError('Give the prompt: `ai-image edit picture.png "make the sky stormy"`.');
     }
+    const design = await readDesignDirection(cwd);
+    const effectivePrompt = withDesignDirection(prompt, design);
 
     const asked = options.purpose ?? config?.image?.purpose ?? null;
-    const purpose = canonicalPurpose(asked);
+    const purpose = canonicalPurpose(asked) ?? 'edit';
     if (asked && !PURPOSE_NAMES.includes(purpose)) {
         throw usageError(`Unknown purpose "${asked}". Known purposes: ${PURPOSE_NAMES.join(', ')}.`);
     }
@@ -107,7 +110,7 @@ export async function run(ctx) {
     const plan = {
         command: 'edit',
         source,
-        prompt,
+        prompt: effectivePrompt,
         model,
         purpose,
         size: size ?? 'the frame of the source',
@@ -136,7 +139,7 @@ export async function run(ctx) {
         const answer = await client.images.edit({
             model,
             purpose,
-            prompt,
+            prompt: effectivePrompt,
             files: [sourceFile, ...references],
             size,
             format,
@@ -188,6 +191,7 @@ export async function run(ctx) {
 
         return reportResult({ options, renderer }, {
             command: 'edit',
+            prompt: effectivePrompt,
             model: answer.model,
             route: answer.route,
             purpose,

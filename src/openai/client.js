@@ -77,6 +77,22 @@ const HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const textOf = (value) => (typeof value === 'string' ? value : '');
 const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
+/** The edit guard for Seedream 5.5: limit edits to the requested scope and protect unrelated pixels. */
+const SEEDREAM_55_EDIT_GUARD = 'Editing constraints: make only the changes explicitly requested. Preserve every unmentioned object, fragment, edge, color, texture, position and opacity exactly as in the source, including its transparency. Do not erase, fade, remove, repaint or make transparent any unmentioned detail. If the request names something to remove, remove only that exact item and leave neighboring objects and details intact. Do not add anything outside the requested changes.';
+
+/**
+ * Add a narrow edit contract for Seedream 5.5 without changing generation or other model prompts.
+ * @param {{ model: string, purpose?: string|null, format?: string|null, prompt: string }} options
+ * @returns {string}
+ */
+function editPromptForModel({ model, purpose, format, prompt }) {
+    const isSeedream55 = /(?:^|\/)seedream[-_.]5[-_.]5(?:$|[-_.])/i.test(String(model ?? ''));
+    if (!isSeedream55 || purpose === 'remove_background' || String(format ?? '').toLowerCase() === 'svg') {
+        return String(prompt ?? '');
+    }
+    return `${String(prompt ?? '')}\n\n${SEEDREAM_55_EDIT_GUARD}`;
+}
+
 /**
  * The quality tier of a picture request.
  *
@@ -1068,7 +1084,7 @@ export async function createClient({ config, env = process.env, signal = null, o
                 if (!isRouteUnsupported(error)) throw error;
             }
         }
-        const answer = await responsesImage({ model, prompt, size, format, background, signal: callSignal });
+        const answer = await responsesImage({ model, prompt, size, format, background, references, signal: callSignal });
         return { payloads: await payloadList(answer, { route: 'responses', model, signal: callSignal }), route: 'responses', raw: answer };
     }
 
@@ -1249,14 +1265,15 @@ export async function createClient({ config, env = process.env, signal = null, o
              * the model accepts, and the answers are put together.
              * @param {{ model?: string|null, purpose?: string|null, prompt: string, size?: string|null,
              *   quality?: string|null, n?: number|null, format?: string|null, background?: string|null,
-             *   references?: string[]|null, resolution?: string|null, seed?: number|null,
+              *   references?: string[]|null, referenceFiles?: object[]|null,
+              *   resolution?: string|null, seed?: number|null,
              *   compression?: number|null, frameCount?: number|null, frameDurationMs?: number|null,
              *   mask?: string|null, signal?: AbortSignal|null }} params
              * @returns {Promise<{ images: Array<{bytes: Buffer, mime: string}>, payloads: string[], model: string, route: string }>}
              */
             async generate({
                 model = null, purpose = null, prompt, size = null, quality = null, n = null, format = null,
-                background = null, references = null, resolution = null, seed = null, compression = null,
+                background = null, references = null, referenceFiles = null, resolution = null, seed = null, compression = null,
                 frameCount = null, frameDurationMs = null, mask = null, signal: callSignal = null,
             } = {}) {
                 const usedModel = resolveModel({ model, purpose });
@@ -1270,13 +1287,20 @@ export async function createClient({ config, env = process.env, signal = null, o
                 const perCall = Math.max(1, profile.maxImages ?? 1);
                 const calls = Math.ceil(wanted / perCall);
                 const vector = isSvgRequest({ model: usedModel, format });
+                const generationReferences = [
+                    ...(Array.isArray(references) ? references : []),
+                    ...(Array.isArray(referenceFiles) ? referenceFiles.map((file) => (
+                        `data:${file.mime || 'image/png'};base64,${Buffer.from(file.bytes).toString('base64')}`
+                    )) : []),
+                ];
                 const attempts = vector ? [] : imageSizeAttempts(size, usedModel, resolution);
                 const chain = modelChain(usedModel);
                 // The name of the request: the same question about the same picture always has
                 // the same name, so the answer of the first phase serves the second one.
                 const hash = journal ? journal.hash({
                     kind: 'images.generate',
-                    model: usedModel, prompt, size, quality: level, n: wanted, format, background, references,
+                    model: usedModel, prompt, size, quality: level, n: wanted, format, background,
+                    references: generationReferences,
                     resolution, seed, compression, frameCount, frameDurationMs, mask,
                 }) : null;
                 if (hash) {
@@ -1310,7 +1334,7 @@ export async function createClient({ config, env = process.env, signal = null, o
                             try {
                                 const answer = await generateOnce({
                                     model: candidate, prompt, size: requestedSize, quality: level, n: chunkCount, format,
-                                    background, references, resolution, seed, compression, frameCount, frameDurationMs,
+                                    background, references: generationReferences, resolution, seed, compression, frameCount, frameDurationMs,
                                     mask, signal: callSignal,
                                 });
                                 const adapter = await rasterAdapter();
@@ -1420,7 +1444,7 @@ export async function createClient({ config, env = process.env, signal = null, o
 
                 // The prompt repeats the alignment: the content keeps its own scale in the corner
                 // of the canvas, and the empty space is padding that is cut off afterwards.
-                let text = String(prompt ?? '');
+                let text = editPromptForModel({ model: usedModel, purpose, format, prompt });
                 if (padding) {
                     const zone = `${padding.originalWidth}x${padding.originalHeight}`;
                     text += `\n\nKeep the source artwork at its original scale and position in the top-left corner `

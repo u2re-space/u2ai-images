@@ -12,7 +12,7 @@
  * @ai.hint legacy-0.2
  *
  * The port of the role of the monolith. The rules of that role are kept:
- * - the source is never scaled and never stretched; a bigger canvas is made by extending it to
+     * - the source is never scaled and never stretched; a bigger canvas is made by extending it to
  *   the right and to the bottom, without moving the content;
  * - the trimming of the padding is a crop with `trim`, never a separate tool;
  * - an SVG is a text file: it is edited as text, not redrawn by a model;
@@ -44,6 +44,7 @@ The rules:
 - An SVG is a text file: change its paths, its viewBox, its colors or its metadata in place. Never redraw it with a model.
 - Compare the candidates with the comparison tool: it builds a local PNG sheet and a map of the difference, without a model request.
 - Keep the source references unchanged. Write the assets under assets/ unless the task names another path.
+- Follow DESIGN.md for visual style when it is provided; a reference image may guide appearance without a measurement pass.
 - Say plainly when an operation is unavailable or failed. Never claim a file you did not write.
 
 Report the assets separately from the typography, and every file with its path, its format and how the work has to use it.`;
@@ -70,6 +71,7 @@ export function assetUse(plan, kind) {
 /**
  * Carry the plan out and report what was made.
  * @param {{ client: object, config?: object|null, task: string, plan: object, sources?: string[],
+ *   references?: string[], design?: string,
  *   cwd?: string, outputDir?: string, signal?: AbortSignal|null, withModel?: boolean,
  *   maxAttempts?: number }} options
  * @returns {Promise<{ summary: string, assets: Array<{ path: string, format: string, use: string }>,
@@ -78,7 +80,8 @@ export function assetUse(plan, kind) {
  * @ai.hint io
  */
 export async function processAssets({
-    client, config = null, task, plan = {}, sources = [], cwd = process.cwd(), outputDir = null,
+    client, config = null, task, plan = {}, sources = [], references = [], design = '',
+    cwd = process.cwd(), outputDir = null,
     signal = null, withModel = false, maxAttempts = 2,
 }) {
     const notes = [];
@@ -97,7 +100,7 @@ export async function processAssets({
 
     // 3. The model is asked for the picture.
     let processed = await runProcessStage({
-        client, config, plan, task, sources: prepared, cwd, outputDir, signal,
+        client, config, plan, task, sources: prepared, references, design, cwd, outputDir, signal,
     });
     notes.push(...processed.notes);
     if (!processed.file) {
@@ -173,7 +176,7 @@ export async function processAssets({
         };
         notes.push(`the attempt ${attempt} is made with another strategy.`);
         const again = await runProcessStage({
-            client, config, plan: nextPlan, task, sources: prepared, cwd, outputDir, signal,
+            client, config, plan: nextPlan, task, sources: prepared, references, design, cwd, outputDir, signal,
         });
         if (!again.file) {
             notes.push(...again.notes);

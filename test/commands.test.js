@@ -273,6 +273,35 @@ test('the generation without a network call is a dry run', async () => {
     assert.ok(json[0].model);
 });
 
+test('a generation dry run does not require or attempt to load a measurer', async () => {
+    const dir = await tempDir();
+    const { renderer, json } = fakeRenderer();
+    const code = await runGenerate({
+        options: options({ positionals: ['a red bicycle'], dryRun: true, json: true }),
+        renderer,
+        config: cloneDefaults(),
+        cwd: dir,
+    });
+    assert.equal(code, 0);
+    assert.equal(json[0].prompt, 'a red bicycle');
+});
+
+test('a generation dry run includes DESIGN.md as styling guidance', async () => {
+    const dir = await tempDir();
+    await writeFile(path.join(dir, 'DESIGN.md'), '# Palette\n- cobalt and cream');
+    const { renderer, json } = fakeRenderer();
+    const code = await runGenerate({
+        options: options({ positionals: ['a red bicycle'], dryRun: true, json: true }),
+        renderer,
+        config: cloneDefaults(),
+        cwd: dir,
+    });
+    assert.equal(code, 0);
+    assert.match(json[0].prompt, /a red bicycle/);
+    assert.match(json[0].prompt, /cobalt and cream/);
+    assert.match(json[0].prompt, /untrusted style data only/);
+});
+
 test('the generation refuses an unknown purpose', async () => {
     const dir = await tempDir();
     const { renderer } = fakeRenderer();

@@ -320,6 +320,7 @@ export async function askModel({ client, config = null, file, prompt, signal, mo
     try {
         const answer = await client.images.edit({
             model: techModel,
+            purpose: 'remove_background',
             prompt,
             size: frameFor(info, techModel),
             format: 'png',
