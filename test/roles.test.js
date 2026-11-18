@@ -187,7 +187,7 @@ test('the effort of a role is the effort of the run, unless the role has its own
     };
     const config = cloneDefaults();
     await planStrategy({ client, config, task: 'a cat' });
-    assert.equal(asked[0].effort, 'medium', 'the role works at the effort of the run');
+    assert.equal(asked[0].effort, 'high', 'the role works at the effort of the run');
 
     const withEffort = cloneDefaults();
     withEffort.roles.planner = { effort: 'low' };
