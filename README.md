@@ -341,9 +341,11 @@ transparent background and the alpha of the answer is the answer.
 | `openai/gpt-image-2.6-sunburst` | The second one: the fallback of the cut-out. |
 
 The answer is judged before it is accepted: a picture without a real alpha, or one that
-leaves a wide halo around the edge, is not a cut-out — the next model of the list is asked.
-A cut-out of a padded source names the zone of the content in the prompt, so the model cuts
-the object out of the picture and does not take the empty canvas for the background.
+leaves a wide halo around the edge, is not a cut-out. The CLI then tries its local matte
+instead of paying for another model; the next model is used only when the gateway says the
+requested model is unknown. A cut-out of a padded source names the zone of the content in the
+prompt, so the model cuts the object out of the picture and does not take the empty canvas for
+the background.
 
 A crop of a screenshot often holds more than one object: the piece of the board that fell
 into the cut of the bishop, the edge of a neighbour in the cut of the board. The flag
@@ -355,13 +357,12 @@ everything else are told to disappear. The same text goes into the prompt of the
 ai-image background bishop.png --subject "chess bishop" --out bishop-cut.png
 ```
 
-A model that redraws the picture draws it a little differently every time: a detail of the
-edge may be lost in one answer and kept in the next. The commands `background` and `alpha`
-therefore ask the model three times and take the answers together — the median of their alpha
-is the cut-out the attempts agree on. A detail that half of the answers keep stays, a detail
-that one answer keeps alone goes, and the soft edge of the object stays soft. The flag
-`--attempts <n>` says how many times the model is asked; the library default of
-`applyGeneratedAlphaMask` is one answer.
+A model that redraws the picture draws it a little differently every time. The commands
+`background` and `alpha` ask once by default so one preparation does not multiply paid requests.
+Use `--attempts <n>` to opt into combining several answers — the median of their alpha is the
+cut-out the attempts agree on. A detail that half of the answers keep stays, a detail that one
+answer keeps alone goes, and the soft edge of the object stays soft. The library default of
+`applyGeneratedAlphaMask` is also one answer.
 
 ```bash
 ai-image background board.png --subject "chess board" --attempts 3 --out board-cut.png

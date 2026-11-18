@@ -36,10 +36,12 @@ export async function run(ctx) {
     const mode = String(options.alphaMode ?? config?.image?.alphaMode ?? 'auto').trim().toLowerCase();
     // The subject is what the model has to keep: the name of the object of the picture.
     const subject = String(options.subject ?? '').trim() || null;
-    // The model is asked more than once: it draws the picture a little differently every time,
-    // and the answers are taken together, so a detail that one of them lost comes back.
+    // An explicit value sets the number of model attempts. Otherwise the cut-out is asked once:
+    // every additional attempt is a paid image request.
     const asked = Number.parseInt(String(options.attempts ?? '').trim(), 10);
-    const attempts = Number.isSafeInteger(asked) && asked > 0 ? asked : 3;
+    const attempts = options.attempts == null
+        ? 1
+        : Number.isSafeInteger(asked) && asked > 0 ? asked : 1;
     const output = localTarget({ options, cwd, input, suffix: 'alpha', ext: '.png' });
 
     const plan = {

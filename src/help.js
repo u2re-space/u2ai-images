@@ -118,9 +118,8 @@ Local options:
                            takes the native alpha of the picture first.
       --subject <text>    What the cut-out has to keep: the name of the object.
                            Everything else goes away, the fragments of the neighbours too.
-      --attempts <n>      How many times the model is asked for the cut-out (3 by default).
-                           The answers are taken together, so a detail that one of them lost
-                           comes back.
+      --attempts <n>      How many times the model is asked for the cut-out (1 by default).
+                           Extra attempts are paid requests; their answers are combined.
       --layout <name>   Layout of the comparison: row | column | grid.
       --frame <shape>   Frame of the comparison: 16:9, 2.39:1, 800x600.
       --gap <n>         The gap between the cells of the comparison.

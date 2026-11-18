@@ -450,9 +450,8 @@ export function alphaFormatWarning(file) {
  * background, no second generation. The answer is judged before it is accepted: a picture
  * without a real alpha, or one that leaves a wide halo around the edge, is not a cut-out.
  *
- * A model that redraws the picture draws it a little differently every time, so the pass may
- * ask more than once: the answers that pass the check are taken together, and the median of
- * their alpha is the cut-out the attempts agree on.
+ * When asked more than once, the answers that pass the check are taken together, and the
+ * median of their alpha is the cut-out the attempts agree on.
  * @param {{ client: object, config?: object|null, base: string, abs: string, cwd: string,
  *   signal?: AbortSignal, model?: string|null, engine?: string, totalPixels?: number,
  *   attempts?: number }} options
@@ -529,7 +528,7 @@ async function modelAlphaPass({ client, config, base, abs, cwd, signal, model, e
  *
  * `attempts` says how many times the model is asked: a model that redraws the picture draws it a
  * little differently every time, and the answers are taken together, so a detail that one of
- * them lost comes back. The commands of the CLI ask three times.
+ * them lost comes back. The CLI asks once by default.
  * @param {{ client?: object|null, config?: object|null, file: string, signal?: AbortSignal,
  *   model?: string|null, alphaSource?: string|null, feather?: number,
  *   alphaMode?: string, subject?: string|null, attempts?: number }} options
@@ -601,9 +600,10 @@ export async function applyGeneratedAlphaMask({
                 };
             }
             lastError = result.error ?? lastError;
-            // The next model is asked when this one is not known to the hosts, or when its answer
-            // is not a cut-out: another model may cut the same subject properly.
-            if (!result.verdict && !isModelUnknown(result.error)) break;
+            // A bad cut-out is a completed, paid request: use the local matte instead of paying
+            // for another model. An unknown model is rejected before generation, so its fallback
+            // may still be tried.
+            if (result.verdict || !isModelUnknown(result.error)) break;
         }
         if (mode === 'mask') return { ...merged, changed: false, reason: 'failed', error: lastError };
     }

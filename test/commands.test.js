@@ -23,6 +23,8 @@ import { run as runSplit } from '../src/commands/split.js';
 import { run as runTrim } from '../src/commands/trim.js';
 import { run as runPad } from '../src/commands/pad.js';
 import { run as runResize } from '../src/commands/resize.js';
+import { run as runBackground } from '../src/commands/background.js';
+import { run as runAlpha } from '../src/commands/alpha.js';
 import {
     chooseDecorationKind,
     decorationName,
@@ -272,6 +274,32 @@ test('the generation without a network call is a dry run', async () => {
     assert.equal(json[0].type, 'plan');
     assert.equal(json[0].prompt, 'a red bicycle');
     assert.ok(json[0].model);
+});
+
+test('background and alpha plan one paid model attempt by default and honor an explicit count', async () => {
+    const dir = await tempDir();
+    const source = 'subject.png';
+    await writeFile(path.join(dir, source), await solidPng(30, 30));
+
+    for (const run of [runBackground, runAlpha]) {
+        const defaultRun = fakeRenderer();
+        await run({
+            options: options({ positionals: [source], dryRun: true, json: true }),
+            renderer: defaultRun.renderer,
+            config: cloneDefaults(),
+            cwd: dir,
+        });
+        assert.equal(defaultRun.json[0].attempts, 1);
+
+        const explicitRun = fakeRenderer();
+        await run({
+            options: options({ positionals: [source], attempts: '3', dryRun: true, json: true }),
+            renderer: explicitRun.renderer,
+            config: cloneDefaults(),
+            cwd: dir,
+        });
+        assert.equal(explicitRun.json[0].attempts, 3);
+    }
 });
 
 test('a generation dry run does not require or attempt to load a measurer', async () => {

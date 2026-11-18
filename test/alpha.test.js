@@ -296,7 +296,7 @@ test('the prompt of the cut-out names the subject when it is given', () => {
     assert.match(named, /fragment of a neighbouring object/);
 });
 
-test('the next model is asked when the answer is not a cut-out', async () => {
+test('an unusable first model answer falls back locally without another paid model pass', async () => {
     const dir = await tempDir();
     const file = path.join(dir, 'a.png');
     await writeFile(file, await solidPng(64, 64, { r: 10, g: 10, b: 10, a: 255 }));
@@ -319,10 +319,50 @@ test('the next model is asked when the answer is not a cut-out', async () => {
         file,
         alphaMode: 'auto',
     });
-    assert.equal(asked.length, 2, 'the second model was asked');
+    assert.equal(asked.length, 1, 'the second model is not asked by default');
     assert.equal(asked[0], 'bytedance-seed/seedream-5-5');
-    assert.equal(asked[1], 'openai/gpt-image-2.6-sunburst');
     assert.equal(result.changed, true, 'the local fallback finished the work');
+});
+
+test('an unknown model is skipped before generation and the next cut-out model is tried', async () => {
+    const dir = await tempDir();
+    const file = path.join(dir, 'a.png');
+    await writeFile(file, await solidPng(64, 64, { r: 10, g: 10, b: 10, a: 255 }));
+    const cutout = Buffer.alloc(64 * 64 * 4);
+    for (let y = 0; y < 64; y += 1) {
+        for (let x = 0; x < 64; x += 1) {
+            const at = (y * 64 + x) * 4;
+            cutout[at] = 10;
+            cutout[at + 1] = 10;
+            cutout[at + 2] = 10;
+            cutout[at + 3] = x >= 16 && x < 48 && y >= 16 && y < 48 ? 255 : 0;
+        }
+    }
+    const asked = [];
+    const client = {
+        images: {
+            async edit(params) {
+                asked.push(params.model);
+                if (asked.length === 1) {
+                    const error = new Error('Unknown model');
+                    error.code = 'MODEL_NOT_FOUND';
+                    throw error;
+                }
+                return { model: params.model, images: [{ bytes: await encodeRgba({ width: 64, height: 64, data: cutout }, { format: 'png' }) }] };
+            },
+        },
+    };
+
+    const result = await applyGeneratedAlphaMask({
+        client,
+        config: cloneDefaults(),
+        file,
+        alphaMode: 'auto',
+    });
+
+    assert.deepEqual(asked, ['bytedance-seed/seedream-5-5', 'openai/gpt-image-2.6-sunburst']);
+    assert.equal(result.changed, true);
+    assert.equal(result.reason, 'model');
 });
 
 test('the answers of several attempts are taken together', async () => {
