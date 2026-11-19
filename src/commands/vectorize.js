@@ -2,7 +2,7 @@
  * @file src/commands/vectorize.js
  * @module commands/vectorize
  * @purpose `ai-image vectorize`: turn a raster into an SVG document.
- * @depends image/vectorize, commands/common, openai/client
+ * @depends image/vectorize, commands/common, model/vector, openai/client
  * @exports run
  * @ai.tags cli, vector, svg
  * @ai.hint keep
@@ -10,6 +10,7 @@
 
 import path from 'node:path';
 import { vectorizeAsset } from '../roles/vectorizer.js';
+import { vectorModelFor } from '../model/vector.js';
 import {
     createCommandClient,
     reportPlan,
@@ -32,7 +33,7 @@ export async function run(ctx) {
     const output = options.out
         ? path.resolve(cwd, options.out)
         : path.resolve(cwd, path.join(path.dirname(input), `${path.parse(input).name}.svg`));
-    const model = options.imageModel ?? config?.vectorModel ?? null;
+    const model = options.imageModel ?? vectorModelFor(config);
 
     const plan = {
         command: 'vectorize',

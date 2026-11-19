@@ -74,6 +74,9 @@ export function parseArgv(argv) {
             factor: { type: 'string' },
             kind: { type: 'string' },
             json: { type: 'boolean', default: false },
+            quiet: { type: 'boolean', default: false },
+            headless: { type: 'boolean', default: false },
+            ascii: { type: 'boolean', default: false },
             'dry-run': { type: 'boolean', default: false },
             batch: { type: 'boolean', default: false },
             'batch-fetch': { type: 'boolean', default: false },
@@ -137,6 +140,16 @@ export function parseArgv(argv) {
         maxSide: parsed.values['max-side'] ?? null,
         factor: parsed.values.factor ?? null,
         kind: parsed.values.kind ?? null,
+        args: positionals,
+        flags: {
+            json: parsed.values.json === true,
+            quiet: parsed.values.quiet === true,
+            headless: parsed.values.headless === true,
+            ascii: parsed.values.ascii === true,
+            verbose: parsed.values.verbose === true,
+            help: parsed.values.help === true,
+            version: parsed.values.version === true,
+        },
         json: parsed.values.json === true,
         dryRun: parsed.values['dry-run'] === true,
         batch: parsed.values.batch === true,
@@ -216,10 +229,14 @@ export function configOverrides(options) {
 
 /**
  * Main entry point: parse the arguments, run the command, map the failure to an exit code.
+ *
+ * The renderer and the operator channel may come from the worker: the graphical shell
+ * runs the same command in its own process and listens to the events over the protocol.
  * @param {string[]} argv
+ * @param {{ renderer?: object|null, input?: object|null }} [options]
  * @returns {Promise<number>} the exit code
  */
-export async function main(argv = process.argv.slice(2)) {
+export async function main(argv = process.argv.slice(2), { renderer: given = null, input = null } = {}) {
     if (argv.includes('--help') || argv.includes('-h')) {
         console.log(HELP);
         return 0;
@@ -249,9 +266,9 @@ export async function main(argv = process.argv.slice(2)) {
         return 2;
     }
 
-    const renderer = detectMode() === 'tty'
+    const renderer = given ?? (detectMode() === 'tty'
         ? createRenderer({ verbose: options.verbose })
-        : createPlainRenderer({ verbose: options.verbose });
+        : createPlainRenderer({ verbose: options.verbose }));
 
     let command;
     try {

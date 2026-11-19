@@ -5,6 +5,7 @@
  * @ai.hint keep
  */
 export { main, parseArgv, configOverrides } from './cli.js';
+export { mainTui } from './tui/cli.js';
 export { COMMANDS, HELP, commandNames } from './help.js';
 export { createRenderer, createPlainRenderer, detectMode } from './cli/renderer.js';
 export { COLORS, paint } from './cli/colors.js';
@@ -24,6 +25,8 @@ export {
     validateConfig,
 } from './config.js';
 export { PURPOSE_NAMES, PURPOSE_MODEL_MAP } from './model/purpose.js';
+export { DEFAULT_VECTOR_MODEL, imageModelProfile, imageModelFamily } from './model/profiles.js';
+export { VECTOR_PROMPT, vectorModelFor } from './model/vector.js';
 export { TEXT_MODEL_PROFILES, textModelProfile, snapEffort } from './model/text.js';
 export { effortFor } from './agent/effort.js';
 export { publishPictures, assetsRel } from './core/publish.js';

@@ -31,6 +31,14 @@ export const DEFAULT_IMAGE_MODEL = 'bytedance-seed/seedream-5-5';
 export const SEEDREAM_MODEL = 'bytedance-seed/seedream-5-5';
 /** The Riverflow model: an opt-in id, not every gateway serves it. */
 export const RIVERFLOW_MODEL = 'sourceful/riverflow-v2.6-pro';
+/**
+ * The model that draws a vector document when the house does not name another one.
+ *
+ * The Sunburst of OpenAI takes `output_format: svg` and writes the document with the
+ * conversion model of the gateway (`SVG_CONVERSION_MODEL`), so the trace of a picture and
+ * the drawing of a new one travel the same road.
+ */
+export const DEFAULT_VECTOR_MODEL = 'openai/gpt-image-2.6-sunburst';
 
 /**
  * The model the gateway runs behind `output_format: svg` for the gpt-image family. The raster
@@ -102,6 +110,7 @@ export const QUALITY_LEVELS = Object.freeze(['low', 'medium', 'high', 'xhigh', '
  *   `sizeHints`               — the frame is repeated in the prompt text for this family;
  *   `paintsFakeTransparency`  — the gateway answers `background: transparent` with a painted plate;
  *   `vectorRatios`            — the model is tuned by a shape, not by a pixel frame;
+ *   `vector`                  — the model writes a vector document (the house asks it for SVG);
  *   `minPixels`/`maxPixels`   — the accepted frame area in pixels;
  *   `maxEdge`                 — the longest side the model accepts;
  *   `maxRatio`                — the widest shape (longest side over shortest).
@@ -126,6 +135,7 @@ export const DEFAULT_PROFILE = Object.freeze({
     sizeHints: false,
     paintsFakeTransparency: false,
     vectorRatios: false,
+    vector: false,
     minPixels: 655_360,
     maxPixels: 8_294_400,
     maxEdge: 3840,
@@ -157,6 +167,7 @@ export const IMAGE_MODEL_PROFILES = Object.freeze([
         gif: true,
         mask: true,
         maxImages: 10,
+        vector: true,
     }),
     Object.freeze({
         match: GPT_IMAGE_25,
@@ -168,6 +179,7 @@ export const IMAGE_MODEL_PROFILES = Object.freeze([
         outputCompression: true,
         mask: true,
         maxImages: 10,
+        vector: true,
     }),
     // Seedream takes a free frame, but the host refuses a frame below 960×960 pixels: the
     // floor is the model's own, and it is what the small crops are padded up to. The frame of the
@@ -202,7 +214,7 @@ export const IMAGE_MODEL_PROFILES = Object.freeze([
         maxRatio: 16,
     }),
     Object.freeze({ match: SEEDED, seed: true }),
-    Object.freeze({ match: RECRAFT_VECTOR, vectorRatios: true }),
+    Object.freeze({ match: RECRAFT_VECTOR, vectorRatios: true, vector: true }),
 ]);
 
 /**

@@ -34,6 +34,7 @@ import {
 } from '../image/tools.js';
 import { applyGeneratedAlphaMask } from '../image/alpha.js';
 import { vectorizePicture } from '../image/vectorize.js';
+import { vectorModelFor } from '../model/vector.js';
 import { sniffImage } from '../openai/images.js';
 import { effortFor } from './effort.js';
 import { resolveInside } from '../access/paths.js';
@@ -269,7 +270,7 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
                 input,
                 output,
                 prompt: args.prompt ?? '',
-                model: args.model ?? config?.vectorModel ?? null,
+                model: args.model ?? vectorModelFor(config),
                 cwd,
                 signal,
                 maxBytes,

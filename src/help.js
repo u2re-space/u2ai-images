@@ -50,6 +50,15 @@ export const HELP = `ai-image — AI image processor: generate, edit, size, crop
 Usage:
   ai-image <command> [options]
 
+Interface:
+  In a terminal, ai-image opens the graphical dashboard of the house: the stages,
+  the progress, the live log and the operator line. The internal worker is
+  ai-image-worker; it owns the ordinary stdout and stderr and talks to the shell
+  over a versioned IPC protocol.
+
+  A pipe, a redirect, --json, --quiet and --headless use the worker directly. The
+  machine output stays the same: --json prints one json object per line on stdout.
+
 Commands:
 ${COMMANDS.map((command) => `  ${command.name.padEnd(11)} ${command.summary}`).join('\n')}
 
@@ -57,6 +66,9 @@ Common options:
   -c, --config <path>   Path to ~/.ai-image/config.json.
   -o, --out <path>      Output file or directory (the command decides which).
       --json            Machine-readable answer on stdout.
+      --quiet           Only the result of the run.
+      --headless        The worker without the graphical shell.
+      --ascii           The symbols of the terminal without the unicode ones.
       --dry-run         Show what would be done, without calling the API.
   -v, --verbose         More detail about what happens.
   -h, --help            This text.
@@ -126,12 +138,22 @@ Local options:
       --labels          Write the name of every picture on the sheet.
       --kind <css|svg>  The technique of a decoration.
 
+Vector graphics:
+  The vector model of the house is openai/gpt-image-2.6-sunburst: it takes
+  "output_format: svg" and the gateway writes the document with its conversion model. The
+  tracing of a picture and the drawing of a new one both go to it; the config may pin
+  another one with "vectorModel".
+
+  ai-image vectorize picture.png --out picture.svg     trace a raster as a document
+  ai-image generate "a fox badge" --format svg --out fox.svg   draw a new document
+
 Configuration:
   ~/.ai-image/config.json  The configuration file.
   AI_IMAGE_*              Environment overrides (AI_IMAGE_HOME changes the directory).
 
 Examples:
-  ai-image vectorize example.png --image-model openai/gpt-image-2.6-sunburst --background transparent
+  ai-image vectorize example.png --out example.svg
+  ai-image generate "a fox badge" --format svg --out fox.svg
   ai-image generate "a red bicycle leaning on a wall" --size 1024x1024
   ai-image edit photo.png "make the sky stormy" --purpose edit
   ai-image edit photo.png "remove uncertain objects and remove background" --background transparent

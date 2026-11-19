@@ -27,6 +27,7 @@ import { runProcessStage } from '../stages/process.js';
 import { runAlignmentStage, targetFrame } from '../stages/alignment.js';
 import { runCorrectionStage } from '../stages/correction.js';
 import { applyGeneratedAlphaMask } from '../image/alpha.js';
+import { vectorModelFor } from '../model/vector.js';
 import { vectorizeAsset } from './vectorizer.js';
 import { pictureInfo } from '../image/tools.js';
 
@@ -209,7 +210,7 @@ export async function processAssets({
             output: svg,
             cwd,
             signal,
-            model: config?.vectorModel ?? null,
+            model: vectorModelFor(config),
         });
         notes.push(...vector.notes);
         if (vector.ok) {

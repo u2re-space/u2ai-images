@@ -2,7 +2,7 @@
  * @file src/commands/generate.js
  * @module commands/generate
  * @purpose `ai-image generate`: make pictures from a prompt.
- * @depends core/prompt, core/sink, commands/common, model/purpose, image/alpha, openai/client
+ * @depends core/prompt, core/sink, commands/common, model/purpose, model/vector, image/alpha, openai/client
  * @exports run
  * @ai.tags cli, generate
  * @ai.hint keep
@@ -13,6 +13,7 @@ import { readFile } from 'node:fs/promises';
 import { readPrompt } from '../core/prompt.js';
 import { createImageSink } from '../core/sink.js';
 import { canonicalPurpose, PURPOSE_NAMES, resolvePurposeModel } from '../model/purpose.js';
+import { VECTOR_PROMPT, vectorModelFor } from '../model/vector.js';
 import { applyGeneratedAlphaMask, alphaFormatWarning } from '../image/alpha.js';
 import { sniffImage } from '../openai/images.js';
 import { readDesignDirection, withDesignDirection } from '../core/design.js';
@@ -42,7 +43,13 @@ export async function run(ctx) {
         throw usageError('Give a prompt: `ai-image generate "a red bicycle on the snow", or pipe it into stdin.');
     }
     const design = await readDesignDirection(cwd);
-    const effectivePrompt = withDesignDirection(prompt, design);
+    const format = pictureFormat({ options, config });
+    // A vector document is a different kind of work: the model of the house for the pictures
+    // cannot draw one, and the prompt has to ask for a document and not for a picture.
+    const vector = format === 'svg';
+    const effectivePrompt = vector
+        ? withDesignDirection(`${prompt}\n\n${VECTOR_PROMPT}`, design)
+        : withDesignDirection(prompt, design);
 
     const asked = options.purpose ?? config?.image?.purpose ?? null;
     const purpose = canonicalPurpose(asked);
@@ -50,10 +57,10 @@ export async function run(ctx) {
         throw usageError(`Unknown purpose "${asked}". Known purposes: ${PURPOSE_NAMES.join(', ')}.`);
     }
 
-    const model = options.imageModel ?? resolvePurposeModel(config, purpose) ?? config?.imageModel ?? null;
+    const model = options.imageModel
+        ?? (vector ? vectorModelFor(config) : (resolvePurposeModel(config, purpose) ?? config?.imageModel ?? null));
     const size = options.size ?? config?.image?.size ?? null;
     const resolution = options.resolution ?? config?.image?.resolution ?? null;
-    const format = pictureFormat({ options, config });
     const background = options.background ?? config?.image?.background ?? 'auto';
     const quality = pictureQuality({ options, config });
     const seed = numberOption(options.seed ?? config?.image?.seed ?? null, '--seed', { min: 0 });

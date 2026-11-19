@@ -2,7 +2,7 @@
  * @file src/image/vectorize.js
  * @module image/vectorize
  * @purpose Turn a raster into an SVG document with the vector model of the picture API.
- * @depends node:path, node:fs/promises, image/raster, image/magick, openai/images
+ * @depends node:path, node:fs/promises, image/raster, image/magick, model/vector, openai/images
  * @usedBy commands/vectorize, roles/vectorizer
  * @exports DEFAULT_VECTOR_PROMPT, assessVectorSource, vectorizePicture
  * @ai.tags images, vector, svg
@@ -20,6 +20,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { sniffImage } from '../openai/images.js';
 import { detectMagick } from './magick.js';
 import { rasterColorCount } from './raster.js';
+import { vectorModelFor } from '../model/vector.js';
 
 /** The prompt of the tracing, when the caller names none. */
 export const DEFAULT_VECTOR_PROMPT = 'Trace this picture as a vector SVG document with the same shapes and colors.';
@@ -88,7 +89,7 @@ export async function vectorizePicture({
         magickPath: config?.image?.magickPath ?? null,
     });
     const kind = sniffImage(bytes);
-    const usedModel = model ?? config?.vectorModel ?? config?.imageModel ?? null;
+    const usedModel = model ?? vectorModelFor(config);
     const answer = await client.images.vectorize({
         model: usedModel,
         prompt: prompt || DEFAULT_VECTOR_PROMPT,

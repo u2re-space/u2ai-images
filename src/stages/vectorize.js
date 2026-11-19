@@ -12,6 +12,7 @@
 
 import path from 'node:path';
 import { vectorizeAsset } from '../roles/vectorizer.js';
+import { vectorModelFor } from '../model/vector.js';
 
 /**
  * Turn a raster into a vector document.
@@ -39,7 +40,7 @@ export async function runVectorizeStage({
         output: target,
         cwd,
         signal,
-        model: model ?? config?.vectorModel ?? null,
+        model: model ?? vectorModelFor(config),
         prompt,
     });
     return {

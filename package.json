@@ -5,7 +5,8 @@
   "type": "module",
   "main": "./index.js",
   "bin": {
-    "ai-image": "./bin/ai-image.js"
+    "ai-image": "./bin/ai-image.js",
+    "ai-image-worker": "./bin/ai-image-worker.js"
   },
   "repository": {
     "type": "git",
@@ -43,7 +44,8 @@
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "canvas": "^4.0.0-rc3",
-    "sharp": "^0.35.5"
+    "sharp": "^0.35.5",
+    "terminal-kit": "^3.1.4"
   },
   "allowScripts": {
     "canvas@3.2.3": true,

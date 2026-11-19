@@ -42,6 +42,12 @@ ai-image background logo.png --out logo-cut.png
 Every command accepts `--json` (one machine-readable object on stdout), `--dry-run` (the plan
 without a single network call) and `--verbose`.
 
+In a terminal the command opens the graphical dashboard of the house: the stages, the progress,
+the live log and the operator line. The internal worker is `ai-image-worker`; it owns the
+ordinary stdout and stderr and talks to the shell over a versioned IPC protocol. A pipe, a
+redirect, `--json`, `--quiet` and `--headless` use the worker directly: the machine output
+stays the same (`--json` prints one json object per line on stdout).
+
 ## Commands
 
 | Command | What it does |
@@ -97,6 +103,10 @@ ai-image compare before.png after.png --mode both --labels
 # a decorative layer: a CSS rule or a standalone SVG
 ai-image decorate "a ribbon banner" --kind css
 
+# a vector document: the tracing of a picture and the drawing of a new one
+ai-image vectorize logo.png --out logo.svg
+ai-image generate "a fox badge" --format svg --out fox.svg
+
 # what is this file?
 ai-image info photo.png --json
 ```
@@ -105,6 +115,30 @@ Without `--out`, a local command writes a derived file next to the source and ne
 it (`photo-fit-contain.png`, `photo-trim.png`, `photo-pad.png`, …). `alpha` and `background`
 copy the source to the derived PNG first, so the original stays untouched. `decorate` writes
 `styles/decor/<name>.css` or `assets/decor/<name>.svg`.
+
+## The vector graphics
+
+A vector document is not a picture with a different extension: it is markup that a browser
+opens as it is. Two commands write one:
+
+```bash
+# the tracing of a raster picture: the same shapes, the same colours, as a document
+ai-image vectorize logo.png --out logo.svg
+
+# the drawing of a new one: the picture never existed
+ai-image generate "a fox badge" --format svg --out fox.svg
+```
+
+The model of the house is `openai/gpt-image-2.6-sunburst`: it takes `output_format: svg`, and
+the gateway writes the document with its conversion model (`gpt-6.2-sol`). The house picks it
+by itself — the first model of its own lists that knows how to write a document — so neither
+command names a model. The config may pin another one:
+
+```json
+{ "vectorModel": "openai/gpt-image-2.6-sunburst" }
+```
+
+The `--image-model` flag still wins over the pin: a run that wants another model says so.
 
 ## The purpose system
 
