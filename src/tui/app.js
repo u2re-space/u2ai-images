@@ -243,11 +243,19 @@ export function createTuiApp({
                 },
             });
 
+            // The shell that stops must not leave the worker behind: the signal of the
+            // shell reaches the worker as the abort of the run.
+            const onSignal = () => client?.command('abort');
+            process.on('SIGINT', onSignal);
+            process.on('SIGTERM', onSignal);
+
             draw();
             const exit = await client.finished;
             await new Promise((resolve) => setTimeout(resolve, 180));
             draw();
             stop();
+            process.off('SIGINT', onSignal);
+            process.off('SIGTERM', onSignal);
             return { code: resultCode ?? exit.code, outputs: state.outputs };
         },
 
