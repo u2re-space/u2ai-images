@@ -8,7 +8,7 @@
  * @ai.hint keep
  */
 
-import { MiB, KiB } from './constants.js';
+import { MiB, KiB, GiB } from './constants.js';
 import { PURPOSE_MODEL_MAP } from '../model/purpose.js';
 
 /**
@@ -218,6 +218,28 @@ export const defaults = {
         retries: 3,
         /** Cap of a {{file:...}} substitution in the configuration. */
         maxFileReadBytes: 256 * KiB,
+    },
+
+    // --- memory ---------------------------------------------------------------
+    /**
+     * The memory of the run: the tmp cache in the memory and the biggest buffer that
+     * may be allocated at once.
+     *
+     * The cache is the tmp of the house: the pictures of the work live in it, and they
+     * never touch the disk. The block of the cache is one `SharedArrayBuffer`, so the
+     * parent and the worker read the very same bytes — not a copy of them.
+     *
+     * The allocation is the ceiling of one buffer: 1 GB, 2 GB, 4 GB, 8 GB. The memory of
+     * the machine is not taken when the block is made — the pages are taken when the
+     * bytes are written — so a big ceiling costs nothing until it is used.
+     */
+    memory: {
+        /** The size of the tmp cache of the run, in bytes. */
+        cacheBytes: 256 * MiB,
+        /** The biggest buffer that may be allocated at once, in bytes. */
+        allocateBytes: 2 * GiB,
+        /** Keep the tmp cache in the memory: the disk is never touched. */
+        inMemory: true,
     },
 
     // --- roles ----------------------------------------------------------------

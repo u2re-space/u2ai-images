@@ -53,3 +53,53 @@ export {
     findGenerated,
     writeFileAtomic,
 } from './shared/house.js';
+
+// --- the shared memory, the protocol and the worker of the house --------------------
+export {
+    SHARED_MAGIC,
+    SHARED_VERSION,
+    SHARED_REGIONS,
+    FLAG_CANCEL,
+    sharedAvailable,
+    createSharedBlock,
+    readSharedBlock,
+} from './shared/shared.js';
+export {
+    PROTOCOL_VERSION,
+    SPEC_VERSION,
+    FRAME,
+    createFrame,
+    isFrame,
+    bytesFrame,
+    base64Frame,
+    bytesOfFrame,
+    bytesOf,
+    base64Bytes,
+    base64Of,
+} from './shared/protocol.js';
+export {
+    channelOf,
+    startWorker,
+    runWorker,
+    workerMain,
+    spawnWorker,
+    runWorkerCycle,
+    workerEntry,
+    DEFAULT_TRANSPORT,
+} from './shared/worker.js';
+export {
+    IMAGE_WORKER_ENTRY,
+    runImageWorker,
+    spawnImageWorker,
+    createImageWorker,
+} from './agent/worker-runner.js';
+export { IMAGE_TOOLS, normalizeImageSpec, imageSpecTexts, runImageCycle } from './agent/worker.js';
+
+// --- the ramdisk: the tmp cache of the house ----------------------------------------
+export {
+    RAMDISK_LIMITS,
+    createRamdisk,
+    createRamdiskFileSystem,
+    createSharedByteCache,
+    allocateMemory,
+} from './access/ramdisk.js';

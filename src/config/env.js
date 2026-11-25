@@ -7,7 +7,7 @@
  * @ai.hint keep
  */
 
-import { KiB, MiB } from './constants.js';
+import { KiB, MiB, GiB } from './constants.js';
 
 /**
  * Parse one env value as a bounded integer.
@@ -116,6 +116,12 @@ export function fromEnv(env = process.env) {
     if (maxImageBytes != null) set(['limits', 'maxImageBytes'], maxImageBytes);
     const maxStdinBytes = intInRange(env.AI_IMAGE_MAX_STDIN_BYTES, KiB, 256 * MiB);
     if (maxStdinBytes != null) set(['limits', 'maxStdinBytes'], maxStdinBytes);
+
+    // --- memory ------------------------------------------------------------------
+    const cacheBytes = intInRange(env.AI_IMAGE_CACHE_BYTES, KiB, 8 * GiB);
+    if (cacheBytes != null) set(['memory', 'cacheBytes'], cacheBytes);
+    const allocateBytes = intInRange(env.AI_IMAGE_ALLOCATE_BYTES, MiB, 8 * GiB);
+    if (allocateBytes != null) set(['memory', 'allocateBytes'], allocateBytes);
 
     return out;
 }

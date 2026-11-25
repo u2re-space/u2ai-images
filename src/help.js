@@ -115,7 +115,7 @@ Generation options:
       --image <file>    A reference picture for a generation or a decoration.
 
 Local options:
-      --engine <name>   Raster engine: auto | sharp | canvas | magick.
+      --engine <name>   Raster engine: auto | sharp | canvas | magick | wasm.
       --x <n> --y <n>  Corner of the crop.
       --width <n> --height <n>  Frame of the result.
       --max-side <n>    The longest side of the result.

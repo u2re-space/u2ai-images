@@ -4,9 +4,17 @@
   "description": "AI image processor: generation, editing, advanced sizing, cropping, padding, alpha and background work over OpenAI-compatible backends.",
   "type": "module",
   "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./shared": "./src/shared/shared.js",
+    "./protocol": "./src/shared/protocol.js",
+    "./worker": "./src/shared/worker.js",
+    "./ramdisk": "./src/access/ramdisk.js"
+  },
   "bin": {
     "ai-image": "./bin/ai-image.js",
-    "ai-image-worker": "./bin/ai-image-worker.js"
+    "ai-image-worker": "./bin/ai-image-worker.js",
+    "ai-image-agent-worker": "./bin/ai-image-agent-worker.js"
   },
   "repository": {
     "type": "git",
@@ -50,5 +58,8 @@
   "allowScripts": {
     "canvas@3.2.3": true,
     "canvas@4.0.0-rc3": true
+  },
+  "optionalDependencies": {
+    "@imagemagick/magick-wasm": "^0.0.46"
   }
 }

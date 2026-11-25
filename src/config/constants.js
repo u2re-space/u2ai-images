@@ -11,6 +11,8 @@
 export const KiB = 1024;
 /** A mebibyte. */
 export const MiB = 1024 * KiB;
+/** A gibibyte. */
+export const GiB = 1024 * MiB;
 
 /** Env prefix of this CLI (the monolith uses AI_*, ours is namespaced). */
 export const ENV_PREFIX = 'AI_IMAGE_';
@@ -37,7 +39,7 @@ export const ENUMS = Object.freeze({
     /** The summary of the reasoning of a text answer. */
     reasoningSummaries: Object.freeze(['auto', 'concise', 'detailed']),
     /** Raster engines the local operations may use. */
-    rasterEngines: Object.freeze(['auto', 'sharp', 'canvas', 'magick']),
+    rasterEngines: Object.freeze(['auto', 'sharp', 'canvas', 'magick', 'wasm']),
     /** How the alpha channel of a picture is built. */
     alphaModes: Object.freeze(['auto', 'mask', 'contour', 'flat', 'key', 'off']),
     /** The purposes of the purpose system. */

@@ -96,15 +96,20 @@ function toAbs(cwd, file) {
 
 /**
  * The order of the engines: sharp is the fastest and does not start a process, canvas covers the
- * installations without the sharp binary, ImageMagick is the last resort.
- * @param {'auto'|'sharp'|'canvas'|'magick'} preferred
- * @returns {Promise<'sharp'|'canvas'|'magick'|null>}
+ * installations without the sharp binary, ImageMagick is the program of the machine, and the wasm
+ * of ImageMagick is the last resort: it works everywhere, even where nothing is installed.
+ * @param {'auto'|'sharp'|'canvas'|'magick'|'wasm'} preferred
+ * @returns {Promise<'sharp'|'canvas'|'magick'|'wasm'|null>}
  * @exports
  * @ai.hint io
  */
 export async function rasterEngine(preferred = 'auto') {
     if (preferred === 'magick') {
         return (await detectMagick()) ? 'magick' : null;
+    }
+    if (preferred === 'wasm') {
+        const wasm = await import('./magick-wasm.js');
+        return (await wasm.wasmAvailable()) ? 'wasm' : null;
     }
     if (preferred === 'canvas') {
         const canvas = await import('./canvas.js');
@@ -114,6 +119,10 @@ export async function rasterEngine(preferred = 'auto') {
     if (await sharp.sharpAvailable()) return 'sharp';
     const canvas = await import('./canvas.js');
     if (await canvas.canvasAvailable()) return 'canvas';
+    const magick = await detectMagick();
+    if (magick) return 'magick';
+    const wasm = await import('./magick-wasm.js');
+    if (await wasm.wasmAvailable()) return 'wasm';
     return null;
 }
 
@@ -149,7 +158,7 @@ export function fitBox(sourceWidth, sourceHeight, cellWidth, cellHeight) {
  * An SVG document is rendered first: a dedicated renderer keeps the gradients, the masks and the
  * text metrics of the document closer to the source than the SVG side of a raster library.
  * @param {Buffer} bytes
- * @param {'auto'|'sharp'|'canvas'|'magick'} [preferred='auto'] The engine of the caller.
+ * @param {'auto'|'sharp'|'canvas'|'magick'|'wasm'} [preferred='auto'] The engine of the caller.
  * @param {number|null} [maxSide=null] The cap of the longest side while decoding.
  * @returns {Promise<{ width: number, height: number, data: Buffer }>}
  * @exports
@@ -159,6 +168,12 @@ export async function decodeRgba(bytes, preferred = 'auto', maxSide = null) {
     if (preferred !== 'canvas' && isSvgBytes(bytes)) {
         const rendered = await svgToPng(bytes, { width: maxSide, height: maxSide }).catch(() => null);
         if (rendered) return await decodeRgba(rendered.png, preferred, null);
+    }
+    if (preferred === 'wasm') {
+        const wasm = await import('./magick-wasm.js');
+        const frame = await wasm.wasmDecode(bytes, { maxSide });
+        if (frame) return frame;
+        throw new Error('The wasm of ImageMagick cannot read this picture.');
     }
     const sharp = await import('./sharp.js');
     if (preferred !== 'canvas' && await sharp.sharpAvailable()) {
@@ -170,19 +185,28 @@ export async function decodeRgba(bytes, preferred = 'auto', maxSide = null) {
         const frame = await canvas.canvasDecode(bytes);
         if (frame) return frame;
     }
-    throw new Error('No local raster engine is available: install sharp or canvas.');
+    const wasm = await import('./magick-wasm.js');
+    const frame = await wasm.wasmDecode(bytes, { maxSide });
+    if (frame) return frame;
+    throw new Error('No local raster engine is available: install sharp, canvas or the wasm of ImageMagick.');
 }
 
 /**
  * Encode a raw RGBA frame into a picture.
  * @param {{ width: number, height: number, data: Buffer }} frame
  * @param {{ format?: string, quality?: number }} [options]
- * @param {'auto'|'sharp'|'canvas'} [preferred='auto']
+ * @param {'auto'|'sharp'|'canvas'|'wasm'} [preferred='auto']
  * @returns {Promise<Buffer>}
  * @exports
  * @ai.hint io
  */
 export async function encodeRgba(frame, { format = 'png', quality = 92 } = {}, preferred = 'auto') {
+    if (preferred === 'wasm') {
+        const wasm = await import('./magick-wasm.js');
+        const bytes = await wasm.wasmEncode(frame, { format, quality });
+        if (bytes) return bytes;
+        throw new Error('The wasm of ImageMagick cannot write this picture.');
+    }
     const sharp = await import('./sharp.js');
     if (preferred !== 'canvas' && await sharp.sharpAvailable()) {
         const bytes = await sharp.sharpEncode(frame, { format, quality });
@@ -193,7 +217,10 @@ export async function encodeRgba(frame, { format = 'png', quality = 92 } = {}, p
         const bytes = await canvas.canvasEncode(frame, { format, quality });
         if (bytes) return bytes;
     }
-    throw new Error('No local raster engine is available: install sharp or canvas.');
+    const wasm = await import('./magick-wasm.js');
+    const bytes = await wasm.wasmEncode(frame, { format, quality });
+    if (bytes) return bytes;
+    throw new Error('No local raster engine is available: install sharp, canvas or the wasm of ImageMagick.');
 }
 
 /**

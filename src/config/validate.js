@@ -257,6 +257,23 @@ export function validateConfig(config) {
         if (!(Number.isSafeInteger(value) && value > 0)) fail(`limits.${key}: положительное целое`);
     }
 
+    // --- memory -------------------------------------------------------------------------
+    if (!isRecord(c.memory)) fail('memory должен быть объектом');
+    for (const key of Object.keys(c.memory)) {
+        if (!(key in defaults.memory)) fail(`memory.${key}: неизвестное поле`);
+    }
+    if (!(Number.isSafeInteger(c.memory.cacheBytes) && c.memory.cacheBytes > 0)) {
+        fail('memory.cacheBytes: положительное целое');
+    }
+    // The biggest buffer of the run: 1 GB, 2 GB, 4 GB, 8 GB.
+    if (!(Number.isSafeInteger(c.memory.allocateBytes) && c.memory.allocateBytes > 0)) {
+        fail('memory.allocateBytes: положительное целое');
+    }
+    if (c.memory.allocateBytes > 8 * 1024 * 1024 * 1024) {
+        fail('memory.allocateBytes: не больше 8 GB');
+    }
+    if (typeof c.memory.inMemory !== 'boolean') fail('memory.inMemory: true | false');
+
     // --- roles --------------------------------------------------------------------------
     if (!isRecord(c.roles)) fail('roles должен быть объектом');
     for (const [name, role] of Object.entries(c.roles)) {

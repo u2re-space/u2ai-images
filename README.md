@@ -452,13 +452,17 @@ ai-image process "cut the background of logo.png" --batch-fetch  # takes the ans
 ## The local raster layer
 
 One language for every engine: a frame is `{ width, height, data }` with raw RGBA. The
-engines are tried in this order: `sharp` → `canvas` → ImageMagick. The engine can be pinned
-with `--engine auto|sharp|canvas|magick` or `image.rasterEngine`.
+engines are tried in this order: `sharp` → `canvas` → ImageMagick → the wasm of
+ImageMagick. The engine can be pinned with `--engine auto|sharp|canvas|magick|wasm` or
+`image.rasterEngine`.
 
 - `sharp` is the fastest and the default when it is installed.
 - `canvas` is the fallback that needs no binary on the PATH.
-- ImageMagick is the last resort; it is the only engine that counts the palette colors, so
-  the vectorizer uses it when it is there.
+- ImageMagick is the program of the machine; it is the only engine that counts the palette
+  colors exactly, so the vectorizer uses it when it is there.
+- The **wasm** of ImageMagick (`@imagemagick/magick-wasm`) is the last resort, and it works
+  everywhere: it is the same ImageMagick 7 compiled to WebAssembly, and it counts the palette
+  colors just as exactly. A machine with nothing installed still has a full raster engine.
 
 Alpha modes: `auto` (native alpha → the model cuts the subject out → `contour` → `flat` →
 `key`), `mask` (the model cuts the subject out, nothing else), `contour`, `flat`, `key`,
@@ -471,6 +475,91 @@ the answer) and `downscale` (the answer is scaled down, the proportions are kept
 The padding is cut off by the share of the answer: a model that answers with a frame of its
 own still put the content where the padding put it, so the share of the canvas is the way back
 to the content. The answer of a different frame does not break the zone.
+
+## The worker
+
+A worker is a separate thread of the parent — or a separate process of it — that runs an
+inherited role over the shared project. The worker never touches a file by itself: it asks
+the parent to run a tool, and the parent runs it with its own rights.
+
+```js
+import { runImageWorker } from '@u2ai/images';
+
+const report = await runImageWorker({
+    spec: { role: { name: 'artist', instructions }, goal, files: ['hero.png'] },
+    onCall: (call) => tools.execute(call.name, call.arguments),
+});
+```
+
+| Transport | What it is | What crosses the border |
+|---|---|---|
+| `'thread'` (default) | A worker thread of the parent process. | The spec, the frames of the tools, the **shared memory** and the **bytes**. |
+| `'process'` | A child process of its own (`bin/ai-image-agent-worker.js`). Its own crash domain, its own env. | The spec, the frames of the tools and the bytes as base64. |
+
+The worker reads its instructions from the shared memory, and it stops when the parent sets
+the flag of cancellation — without a message round trip.
+
+## The shared memory
+
+The big texts of a hand-over — the instructions of the role, the notes of the context — do
+not travel as copies: the parent writes them into one `SharedArrayBuffer`, and the thread
+reads them from there. The strings go as UTF-8 bytes (`TextEncoder` writes, `TextDecoder`
+reads), and the buffer also carries the **flag of cancellation**: the parent sets it with
+`Atomics`, and the thread sees it between its turns.
+
+```js
+import { createSharedBlock, readSharedBlock, sharedAvailable } from '@u2ai/images/shared';
+
+const shared = createSharedBlock({ instructions, notes });
+await runImageWorker({
+    spec: { role: { name: 'artist' }, goal, shared: shared.buffer },
+    onCall,
+    onCancel: () => shared.cancel(),
+});
+```
+
+Shared memory crosses threads, not processes: a process gets the texts inside the spec.
+
+## The bytes
+
+A picture does not have to touch the disk to reach the worker. The bytes travel in their own
+frame — a buffer that moves without a copy — or as base64, for the transport that cannot
+move a buffer.
+
+```js
+import { bytesFrame, base64Frame, bytesOfFrame } from '@u2ai/images/protocol';
+
+const { frame, transfer } = bytesFrame(picture, { name: 'hero.png', mime: 'image/png' });
+worker.postMessage(frame, transfer);   // the thread: the buffer moves
+worker.send(base64Frame(picture));     // the process: the bytes go as text
+```
+
+A `Buffer` of the pool of Node.js may not be transferred: the bytes get their own buffer
+first.
+
+## The ramdisk
+
+The tmp cache of the house: a file system in the memory and a cache of bytes that the parent
+and the worker share.
+
+```js
+import { createRamdisk, createRamdiskFileSystem, allocateMemory } from '@u2ai/images/ramdisk';
+
+// The memory file system is a backend of the access: the rules of the paths hold in it.
+const access = createAccess({ root: process.cwd(), fs: createRamdiskFileSystem() });
+
+// The cache is one block of shared memory: the parent writes, the worker reads.
+const ramdisk = createRamdisk({ cacheBytes: 256 * 1024 * 1024 });
+ramdisk.cache.write(picture);
+
+// A block of memory for the work of the run: 1 GB, 2 GB, 4 GB, 8 GB.
+const block = allocateMemory({ bytes: 4 * 1024 * 1024 * 1024 });
+```
+
+The block is virtual memory: the pages are taken when the bytes are written, not when the
+block is made, so a big ceiling costs nothing until it is used. The ceiling of the run is
+`memory.allocateBytes` (2 GB by default, 8 GB at most), and the size of the tmp cache is
+`memory.cacheBytes`.
 
 ## The agentic pipeline
 
