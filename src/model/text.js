@@ -55,27 +55,27 @@ export const TEXT_MODEL_PROFILES = Object.freeze({
     },
     'openai/gpt-6.1-sol': {
         window: 800_000,
-        maxOutput: 16_000,
+        maxOutput: 32_000,
         ceiling: 'xhigh',
         efforts: ['low', 'medium', 'high', 'xhigh'],
     }, 
     'openai/gpt-6.2-sol': {
         window: 800_000,
-        maxOutput: 16_000,
+        maxOutput: 32_000,
         ceiling: 'xhigh',
         efforts: ['low', 'medium', 'high', 'xhigh'],
     },
     'openai/gpt-6.1-terra': {
         window: 800_000,
-        maxOutput: 16_000,
-        ceiling: 'high',
-        efforts: ['low', 'medium', 'high'],
+        maxOutput: 32_000,
+        ceiling: 'xhigh',
+        efforts: ['low', 'medium', 'high', 'xhigh'],
     },
     'openai/gpt-6-luna': {
         window: 800_000,
-        maxOutput: 16_000,
-        ceiling: 'medium',
-        efforts: ['low', 'medium'],
+        maxOutput: 32_000,
+        ceiling: 'high',
+        efforts: ['low', 'medium', 'high'],
     },
 });
 

@@ -135,10 +135,10 @@ test('a text model has a ceiling and a ladder of the efforts', () => {
 
 test('an effort is pulled down to what the model takes', () => {
     const luna = textModelProfile('openai/gpt-6-luna');
-    assert.equal(snapEffort('high', luna), 'medium', 'the ceiling of the model wins');
+    assert.equal(snapEffort('high', luna), 'high', 'the ceiling of the model wins');
     assert.equal(snapEffort('low', luna), 'low');
     const terra = textModelProfile('openai/gpt-6.1-terra');
-    assert.equal(snapEffort('xhigh', terra), 'high');
+    assert.equal(snapEffort('xhigh', terra), 'xhigh');
     const minimax = textModelProfile('minimax/minimax-m3.1-flash');
     assert.equal(snapEffort('high', minimax), 'high');
     assert.equal(snapEffort('xhigh', minimax), 'xhigh');

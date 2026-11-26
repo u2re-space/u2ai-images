@@ -357,7 +357,7 @@ test('the effort of a request is pulled down to what the model takes', async () 
     try {
         await client.responses.create({ model: 'openai/gpt-6-luna', input: 'a cat', effort: 'high' });
         const body = JSON.parse(host.requests.at(-1).body);
-        assert.equal(body.reasoning.effort, 'medium', 'the model does not take more than its ceiling');
+        assert.equal(body.reasoning.effort, 'high', 'the model does not take more than its ceiling');
     } finally {
         client.close();
         await host.close();
