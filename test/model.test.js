@@ -114,22 +114,22 @@ test('a text model has a ceiling and a ladder of the efforts', () => {
     assert.equal(minimax.ceiling, 'xhigh');
     assert.ok(minimax.efforts.includes('high'));
     assert.equal(minimax.window, 1_000_000);
-    assert.equal(minimax.maxOutput, 524_288);
+    assert.equal(minimax.maxOutput, 64_000);
     // Kimi is tuned for the speed of the answer: the ceiling is `medium`.
     const kimi = TEXT_MODEL_PROFILES['moonshotai/kimi-k3.1-pro'];
     assert.equal(kimi.ceiling, 'high');
     assert.equal(kimi.window, 1_000_000);
-    assert.equal(kimi.maxOutput, 944_000);
+    assert.equal(kimi.maxOutput, 64_000);
     assert.ok(kimi.efforts.includes('low'), 'kimi takes the reasoning off without a refusal');
     // Gemini 4 Hydrogen: the levels of the effort are the four of the card of the vendor.
     const gemini = TEXT_MODEL_PROFILES['google/gemini-4-hydrogen'];
     assert.equal(gemini.ceiling, 'xhigh');
-    assert.equal(gemini.window, 1_048_576);
-    assert.equal(gemini.maxOutput, 1_048_576);
+    assert.equal(gemini.window, 1_000_000);
+    assert.equal(gemini.maxOutput, 64_000);
     assert.deepEqual(gemini.efforts, ['low', 'medium', 'high', 'xhigh']);
     // A model the table does not know works in the middle of the ladder.
     const unknown = textModelProfile('who/knows');
-    assert.equal(unknown.ceiling, 'medium');
+    assert.equal(unknown.ceiling, 'high');
     assert.deepEqual(unknown.efforts, ['low', 'medium', 'high']);
 });
 

@@ -37,43 +37,43 @@ import { ENUMS } from '../config/constants.js';
 export const TEXT_MODEL_PROFILES = Object.freeze({
     'minimax/minimax-m3.1-flash': {
         window: 1_000_000,
-        maxOutput: 524_288,
+        maxOutput: 64_000,
         ceiling: 'xhigh',
         efforts: ['low', 'medium', 'high', 'xhigh'],
     },
     'google/gemini-4-hydrogen': {
-        window: 1_048_576,
-        maxOutput: 1_048_576,
+        window: 1_000_000,
+        maxOutput: 64_000,
         ceiling: 'xhigh',
         efforts: ['low', 'medium', 'high', 'xhigh'],
     },
     'moonshotai/kimi-k3.1-pro': {
         window: 1_000_000,
-        maxOutput: 944_000,
+        maxOutput: 64_000,
         ceiling: 'high',
         efforts: ['low', 'medium', 'high'],
     },
     'openai/gpt-6.1-sol': {
-        window: 400_000,
-        maxOutput: 128_000,
+        window: 800_000,
+        maxOutput: 16_000,
         ceiling: 'xhigh',
         efforts: ['low', 'medium', 'high', 'xhigh'],
     }, 
     'openai/gpt-6.2-sol': {
-        window: 400_000,
-        maxOutput: 128_000,
+        window: 800_000,
+        maxOutput: 16_000,
         ceiling: 'xhigh',
         efforts: ['low', 'medium', 'high', 'xhigh'],
     },
     'openai/gpt-6.1-terra': {
-        window: 400_000,
-        maxOutput: 128_000,
+        window: 800_000,
+        maxOutput: 16_000,
         ceiling: 'high',
         efforts: ['low', 'medium', 'high'],
     },
     'openai/gpt-6-luna': {
-        window: 400_000,
-        maxOutput: 128_000,
+        window: 800_000,
+        maxOutput: 16_000,
         ceiling: 'medium',
         efforts: ['low', 'medium'],
     },
@@ -81,9 +81,9 @@ export const TEXT_MODEL_PROFILES = Object.freeze({
 
 /** The profile of a model that the table does not know: the middle of the ladder. */
 const DEFAULT_PROFILE = Object.freeze({
-    window: 131_072,
-    maxOutput: 16_384,
-    ceiling: 'medium',
+    window: 200_000,
+    maxOutput: 16_000,
+    ceiling: 'high',
     efforts: ['low', 'medium', 'high'],
 });
 
