@@ -55,6 +55,7 @@ stays the same (`--json` prints one json object per line on stdout).
 | `generate` | Generate a picture from a prompt. |
 | `edit` | Edit a picture with a prompt, with optional reference pictures. |
 | `vectorize` | Turn a raster into an SVG document. |
+| `svg` | Edit a vector document with a text model (`edit`), tidy it (`polish`) or name its problems (`inspect`). |
 | `decorate` | Build a decorative layer: a CSS rule or an SVG file. |
 | `crop` | Crop a box out of a picture, or cut its padding off (`--trim`). |
 | `pad` | Extend the canvas to a frame without touching the picture. |
@@ -139,6 +140,55 @@ command names a model. The config may pin another one:
 ```
 
 The `--image-model` flag still wins over the pin: a run that wants another model says so.
+
+### The refinement of the document
+
+The tracing draws the document with a **picture** model, and a picture model knows nothing
+about the code of a document. What comes out is a picture that happens to be markup: a
+hundred decimals in a path, no title for a meaningful picture, a `<script>` nobody asked
+for, and an empty group left behind.
+
+The document is finished in two more stages, and they run on their own after the tracing:
+
+1. **The edit** — a **text** model reads the document as code and names the *edits* that
+   bring it to a clean state. The picture is not redrawn: the shapes stay the shapes. The
+   editor may name the frame, the accessibility, the ids, the structure and the palette —
+   but not the outline.
+2. **The polish** — the local check and the local tidy: the frame, the namespace, the
+   balance of the tags, the scripts, the references to the outside, the whitespace, the
+   empty groups.
+
+The edits are *targeted* on purpose. A whole rewritten document may be cut by the cap of
+the output of the model, and a cut document is a broken picture. An edit names a fragment of
+the source and what has to happen to it:
+
+```json
+{ "kind": "replace", "find": "<svg xmlns=\"...\">", "replace": "<svg xmlns=\"...\" viewBox=\"0 0 24 24\" role=\"img\">" }
+```
+
+The kinds are `replace`, `insert`, `remove` and `setAttribute`. An edit whose fragment is
+not in the document is **refused and reported** — a model that misremembers the source must
+not be able to corrupt the picture. A document that does not open after the edits is not
+written: the old one stays.
+
+Both stages are also commands of their own:
+
+```bash
+# what is wrong with the document
+ai-image svg inspect logo.svg
+
+# the local tidy: the frame, the whitespace, the empty groups
+ai-image svg polish logo.svg
+
+# the text model reads the document as code and changes it
+ai-image svg edit logo.svg "add a title and give the paths names"
+```
+
+The model of the editor is the text model of the run. It may be pinned:
+
+```json
+{ "roles": { "svgEditor": { "model": "openai/gpt-5.1", "effort": "medium" } } }
+```
 
 ## The purpose system
 

@@ -95,6 +95,26 @@ export {
 } from './agent/worker-runner.js';
 export { IMAGE_TOOLS, normalizeImageSpec, imageSpecTexts, runImageCycle } from './agent/worker.js';
 
+// --- the vector document: the analysis, the edits and the polish ----------------------
+export {
+    SVG_EDIT_KINDS,
+    SVG_PROBLEMS,
+    parseSvgDocument,
+    findSvgProblems,
+    applySvgEdits,
+    tidySvgDocument,
+    svgDocumentSummary,
+} from './image/svg-document.js';
+export {
+    SVG_EDITOR_INSTRUCTIONS,
+    editSvgDocument,
+    askSvgEdits,
+    tidySvgAsset,
+} from './roles/svg-editor.js';
+export { SVG_EDITOR_SCHEMA } from './agent/schemas.js';
+export { runSvgEditStage } from './stages/svg-edit.js';
+export { runSvgPolishStage } from './stages/svg-polish.js';
+
 // --- the ramdisk: the tmp cache of the house ----------------------------------------
 export {
     RAMDISK_LIMITS,

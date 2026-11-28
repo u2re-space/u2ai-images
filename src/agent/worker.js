@@ -40,6 +40,8 @@ export const IMAGE_TOOLS = Object.freeze([
     'fit_image',
     'alpha_image',
     'vectorize_image',
+    'edit_svg',
+    'polish_svg',
     'compare_images',
     'view_image',
     'info_image',

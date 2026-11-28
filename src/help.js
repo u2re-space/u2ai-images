@@ -17,6 +17,7 @@ export const COMMANDS = Object.freeze([
     { name: 'generate', summary: 'Generate a picture from a prompt.', usage: 'ai-image generate "<prompt>" [--image <file>] [--purpose <name>] [--size <WxH>]' },
     { name: 'edit', summary: 'Edit a picture with a prompt.', usage: 'ai-image edit <file> "<prompt>" [--reference <file>] [--purpose <name>]' },
     { name: 'vectorize', summary: 'Turn a raster into SVG.', usage: 'ai-image vectorize <file> [--out <file.svg>]' },
+    { name: 'svg', summary: 'Edit a vector document with a text model, or tidy it.', usage: 'ai-image svg edit|polish|inspect <file.svg> ["what to change"] [--out <file.svg>]' },
     { name: 'decorate', summary: 'Build a decorative layer: a CSS rule or an SVG file.', usage: 'ai-image decorate "<description>" [--kind css|svg] [--out <file>]' },
     { name: 'crop', summary: 'Crop a box out of a picture, or cut its padding off.', usage: 'ai-image crop <file> [--x <n> --y <n> --width <n> --height <n>] [--trim]' },
     { name: 'pad', summary: 'Extend the canvas to a frame, without touching the picture.', usage: 'ai-image pad <file> --width <n> --height <n> [--color <css>]' },
@@ -147,12 +148,22 @@ Vector graphics:
   ai-image vectorize picture.png --out picture.svg     trace a raster as a document
   ai-image generate "a fox badge" --format svg --out fox.svg   draw a new document
 
+  The document that comes out of the tracing is finished in two stages: a text model reads
+  it as code and names the edits, and the local stage tidies what is left. The picture is
+  never redrawn — the shapes stay the shapes.
+
+  ai-image svg inspect picture.svg                     name the problems of a document
+  ai-image svg polish picture.svg                     the local check and the local tidy
+  ai-image svg edit picture.svg "add a title"         edit the document with a text model
+
 Configuration:
   ~/.ai-image/config.json  The configuration file.
   AI_IMAGE_*              Environment overrides (AI_IMAGE_HOME changes the directory).
 
 Examples:
   ai-image vectorize example.png --out example.svg
+  ai-image svg edit example.svg "add a title and name the paths"
+  ai-image svg polish example.svg
   ai-image generate "a fox badge" --format svg --out fox.svg
   ai-image generate "a red bicycle leaning on a wall" --size 1024x1024
   ai-image edit photo.png "make the sky stormy" --purpose edit

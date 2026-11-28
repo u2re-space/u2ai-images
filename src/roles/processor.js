@@ -4,7 +4,7 @@
  * @purpose The processor of the assets: the plan is carried out, and the report says what was
  *          made, in which format, and how it has to be used.
  * @depends stages/crop, stages/padding, stages/process, stages/alignment, stages/correction,
- *   image/alpha, roles/vectorizer
+ *   stages/svg-edit, stages/svg-polish, image/alpha, roles/vectorizer
  * @usedBy agent/pipeline, commands/process
  * @exports PROCESSOR_INSTRUCTIONS, processAssets, assetUse
  * @ai.tags roles, processor, assets
@@ -26,6 +26,8 @@ import { runPaddingStage } from '../stages/padding.js';
 import { runProcessStage } from '../stages/process.js';
 import { runAlignmentStage, targetFrame } from '../stages/alignment.js';
 import { runCorrectionStage } from '../stages/correction.js';
+import { runSvgEditStage } from '../stages/svg-edit.js';
+import { runSvgPolishStage } from '../stages/svg-polish.js';
 import { applyGeneratedAlphaMask } from '../image/alpha.js';
 import { vectorModelFor } from '../model/vector.js';
 import { vectorizeAsset } from './vectorizer.js';
@@ -220,6 +222,25 @@ export async function processAssets({
                 format: 'svg',
                 use: assetUse(plan, 'svg'),
             });
+            // The document exists, and it is the code of a picture that nobody wrote. A text
+            // model reads it as code and names the edits; the local stage tidies what is left.
+            const edited = await runSvgEditStage({
+                client,
+                config,
+                input: vector.path,
+                output: svg,
+                cwd,
+                task: '',
+                signal,
+            });
+            notes.push(...edited.notes);
+            if (edited.ok) {
+                const polished = await runSvgPolishStage({ input: edited.path, output: svg, cwd });
+                notes.push(...polished.notes);
+                for (const problem of polished.problems) {
+                    notes.push(`the document still has the problem «${problem}».`);
+                }
+            }
         }
     }
 

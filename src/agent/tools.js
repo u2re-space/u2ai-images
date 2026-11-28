@@ -34,6 +34,7 @@ import {
 } from '../image/tools.js';
 import { applyGeneratedAlphaMask } from '../image/alpha.js';
 import { vectorizePicture } from '../image/vectorize.js';
+import { editSvgDocument, tidySvgAsset } from '../roles/svg-editor.js';
 import { vectorModelFor } from '../model/vector.js';
 import { sniffImage } from '../openai/images.js';
 import { effortFor } from './effort.js';
@@ -49,6 +50,8 @@ export const TOOL_NAMES = Object.freeze([
     'fit_image',
     'alpha_image',
     'vectorize_image',
+    'edit_svg',
+    'polish_svg',
     'compare_images',
     'view_image',
 ]);
@@ -276,6 +279,56 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
                 maxBytes,
             });
             return { file: result.rel, model: result.model, colors: result.colors, suitable: result.suitable };
+        },
+
+        /**
+         * Edit a vector document with a text model.
+         *
+         * The model reads the document as code and names the edits; the code applies them.
+         * The drawing itself is not redrawn: the shapes stay the shapes.
+         * @param {{ input: string, output?: string, task?: string, model?: string|null }} args
+         * @returns {Promise<object>}
+         */
+        async edit_svg(args = {}) {
+            const input = await abs(args.input);
+            const output = args.output ? await abs(args.output, { forWrite: true }) : input;
+            const result = await editSvgDocument({
+                client,
+                config,
+                input,
+                output,
+                cwd,
+                task: args.task ?? '',
+                model: args.model ?? config?.roles?.svgEditor?.model ?? null,
+                signal,
+            });
+            return {
+                file: result.ok ? rel(result.path) : null,
+                ok: result.ok,
+                reason: result.reason,
+                applied: result.applied,
+                failed: result.failed.length,
+                problems: result.problems,
+                model: result.model,
+            };
+        },
+
+        /**
+         * Check and tidy a vector document, without a model.
+         * @param {{ input: string, output?: string }} args
+         * @returns {Promise<object>}
+         */
+        async polish_svg(args = {}) {
+            const input = await abs(args.input);
+            const output = args.output ? await abs(args.output, { forWrite: true }) : input;
+            const result = await tidySvgAsset({ input, output, cwd });
+            return {
+                file: result.ok ? rel(result.path) : null,
+                ok: result.ok,
+                reason: result.reason,
+                changed: result.changed,
+                problems: result.problems,
+            };
         },
 
         /**

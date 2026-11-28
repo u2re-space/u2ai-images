@@ -265,6 +265,8 @@ export const defaults = {
         learner: {},
         decorator: {},
         vectorizer: {},
+        /** The editor of a vector document: a text model that reads the SVG as code. */
+        svgEditor: {},
     },
 };
 

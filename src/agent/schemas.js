@@ -2,11 +2,12 @@
  * @file src/agent/schemas.js
  * @module agent/schemas
  * @purpose The strict shapes of the answers of the roles: the planner, the processor, the
- *          corrector and the vectorizer.
+ *          corrector, the vectorizer and the editor of a vector document.
  * @depends none
- * @usedBy roles/planner, roles/processor, roles/corrector, roles/vectorizer, agent/pipeline
+ * @usedBy roles/planner, roles/processor, roles/corrector, roles/vectorizer,
+ *          roles/svg-editor, agent/pipeline
  * @exports PLANNER_SCHEMA, PROCESSOR_SCHEMA, CORRECTOR_SCHEMA, VECTORIZER_SCHEMA,
- *          ROLE_SCHEMAS, schemaEnvelope, validateAgainst
+ *          SVG_EDITOR_SCHEMA, ROLE_SCHEMAS, schemaEnvelope, validateAgainst
  * @ai.tags schema, roles
  * @ai.hint keep
  *
@@ -33,6 +34,26 @@ function object(properties) {
         type: 'object',
         properties,
         required: Object.keys(properties),
+        additionalProperties: false,
+    };
+}
+
+/**
+ * A strict object schema with optional properties: the named ones may be left out, and
+ * nothing else is allowed.
+ *
+ * The edits of a document need it: an edit of the kind `replace` has no tag and no
+ * attribute, and a model that is forced to invent them answers with noise.
+ * @param {object} properties
+ * @param {string[]} [optional] the properties that may be left out
+ * @returns {object}
+ * @ai.hint pure
+ */
+function objectWithOptional(properties, optional = []) {
+    return {
+        type: 'object',
+        properties,
+        required: Object.keys(properties).filter((key) => !optional.includes(key)),
         additionalProperties: false,
     };
 }
@@ -163,12 +184,40 @@ export const VECTORIZER_SCHEMA = object({
     notes: { ...strings, description: 'What the tracing kept and what it lost.' },
 });
 
+/**
+ * The answer of the editor of a vector document: the edits that change it.
+ *
+ * Every edit names a fragment of the source and what has to happen to it. The fields that
+ * only one kind of an edit uses are there anyway: the schema is strict, and a model that
+ * leaves one out is asked again.
+ */
+export const SVG_EDITOR_SCHEMA = object({
+    edits: {
+        type: 'array',
+        description: 'The edits of the document; empty when it is already clean.',
+        items: objectWithOptional({
+            kind: {
+                type: 'string',
+                enum: ['replace', 'insert', 'remove', 'setAttribute'],
+                description: 'What happens to the fragment.',
+            },
+            find: { ...string, description: 'The exact fragment of the source, as it is in the document.' },
+            replace: { ...string, description: 'The new text; empty for a removal.' },
+            tag: { ...string, description: 'The name of the tag; only for setAttribute.' },
+            attribute: { ...string, description: 'The name of the attribute; only for setAttribute.' },
+            value: { ...string, description: 'The new value of the attribute; only for setAttribute.' },
+        }, ['replace', 'tag', 'attribute', 'value']),
+    },
+    notes: { ...strings, description: 'What the edits do and why.' },
+});
+
 /** Every schema of a role, by the name of the role. */
 export const ROLE_SCHEMAS = Object.freeze({
     planner: PLANNER_SCHEMA,
     processor: PROCESSOR_SCHEMA,
     corrector: CORRECTOR_SCHEMA,
     vectorizer: VECTORIZER_SCHEMA,
+    svgEditor: SVG_EDITOR_SCHEMA,
 });
 
 /**
