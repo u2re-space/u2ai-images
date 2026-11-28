@@ -473,6 +473,40 @@ from then on. When every host refuses, the run fails with one error that carries
 of every attempt (`ALL_BACKENDS_FAILED`), and the decision about the next model or the next
 route is made by all the attempts, not by the last one.
 
+## The salvage of an unknown answer
+
+The built-in readers know two shapes: `data[].b64_json` and `data[].url`. A gateway that nests
+the picture anywhere else — `data.result.images[].url[]` was the first, others keep appearing —
+would end the call with an error even though the bytes were in hand.
+
+Instead of another hardcoded branch per vendor, the raw answer is **described** to the model (the
+long base64 strings are elided, the paths are shown), and the model answers with the one thing
+that generalizes: a function that walks that particular object and returns the payloads.
+
+The script is code, and code from a model is code from the internet as far as the machine is
+concerned. It runs in the sandbox of `openai/parser-sandbox` — a realm of `node:vm` inside a
+worker thread of its own, built on the same principles as Code Mode:
+
+- **No host object is ever in the realm.** The answer crosses as a **JSON string** (the script
+  reads it with `JSON.parse(response)`), and the helpers are facades that return primitives.
+  The facades live in the closure of the install script, where the script cannot see them.
+- **`codeGeneration` is off.** No `eval`, no `new Function`, and no way back through the
+  constructor of a constructor.
+- **The script runs in a worker thread.** A loop that never yields is stopped by
+  `terminate()`, and the run of the picture lives.
+
+The script may still do what it was written for — pull a link the answer only mentions, decode
+inline base64, and drop the result where the caller can find it — and on top of that it may
+reach the libraries of the house (`canvas`, the wasm of ImageMagick, `openvector`) and the
+memory of the house, through the same facade as Code Mode.
+
+```js
+const raw = await library.call('openvector.CoreSession', []);
+```
+
+Both the raw answer and the script that was written for it stay on disk, so a gateway whose
+shape changes again starts from the evidence rather than from a guess.
+
 ## The batch route
 
 Some hosts serve the OpenAI batch API: the requests go out as one file, the host works on
@@ -569,6 +603,55 @@ await runImageWorker({
 ```
 
 Shared memory crosses threads, not processes: a process gets the texts inside the spec.
+
+## Code Mode
+
+The roles of the images may write a **program** instead of calling the tools one by one. The
+program runs in a sandbox — a realm of `node:vm` inside a worker thread of its own — and every
+tool it calls travels back to this process, which runs it with the rights and the rules of the
+images.
+
+```js
+const made = await tools.generate_image({ prompt: 'a red bicycle leaning on a wall' });
+const edited = await tools.edit_image({ input: made.files[0], prompt: 'make the sky stormy' });
+return { made, edited };
+```
+
+Inside the program:
+
+| What | What it is |
+|---|---|
+| `await tools.<name>(args)` | Calls a tool of the step. The answer is the text the tool returned. |
+| `catalogue.names` | The tools the program may call. `catalogue.describe(name)` — what one of them does. |
+| `fs` | A file system in the memory: `readFile`, `writeFile`, `readdir`, `stat`, `mkdir`, `unlink`. |
+| `shared` | The shared block of the run: `shared.view` is a byte view of it, one memory with the parent. |
+| `allocate(bytes)` | A block of memory — 1 GB, 2 GB, 4 GB, 8 GB. The pages are taken when the bytes are written. |
+| `library.call(path, args)` | The libraries of the house: `canvas`, the wasm of ImageMagick, openvector. |
+| `console.log` | The output of the program, which comes back to the model with the answer. |
+
+### The image API, raw
+
+The tools write the picture on the disk and answer with its path. The **raw API** is there too,
+for the cases the tools do not cover — it is a *facility* of the host, and it answers with data
+instead of with a path:
+
+```js
+const raw = await library.call('images.generate', [{ prompt: 'a cat', n: 2 }]);
+// raw.payloads — the pictures, as base64
+// raw.model, raw.route
+```
+
+The facility is named like a library, but it is not one: the function behind it lives in the
+parent, so the call travels back there over the same protocol the tool calls use.
+
+The realm has no `process`, no `require` and no network, and it cannot load a module at all: the
+libraries are reached by name and by member, over a facade that carries data both ways and
+nothing else. A native object stays on this side of the border and the program holds an
+opaque id for it.
+
+Code Mode is a **write**: the program calls the tools of the images, and the images write the
+files. It stands behind the write gate like any other write, and the turn that carries it
+earns the budget of the write.
 
 ## The bytes
 

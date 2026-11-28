@@ -334,6 +334,20 @@ export function createSharedByteCache({ capacityBytes = 64 * 1024 * 1024, shared
         },
 
         /**
+         * The whole data region of the block, whatever is written in it.
+         *
+         * The block is a scratchpad: a side that writes into it directly — the sandbox of
+         * Code Mode, for one — writes bytes the length word does not know about. The view
+         * is the same memory, so the other side sees them at once.
+         *
+         * @returns {Uint8Array} a view of the data region, not a copy of it
+         * @ai.hint pure
+         */
+        view() {
+            return bytes;
+        },
+
+        /**
          * The bytes of the block right now, as a copy.
          * @returns {Buffer}
          * @ai.hint pure

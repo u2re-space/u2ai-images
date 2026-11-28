@@ -27,6 +27,23 @@ export {
 export { PURPOSE_NAMES, PURPOSE_MODEL_MAP } from './model/purpose.js';
 export { DEFAULT_VECTOR_MODEL, imageModelProfile, imageModelFamily } from './model/profiles.js';
 export { VECTOR_PROMPT, vectorModelFor } from './model/vector.js';
+export {
+    describeShape,
+    extractScript,
+    makeParserInvoke,
+    parseImageResponseWithAI,
+    runParserScript,
+    toSource,
+} from './openai/parser.js';
+export {
+    PARSER_SANDBOX_LIMITS,
+    PARSER_SANDBOX_VERSION,
+    ParserSandboxError,
+    createParserSandboxSpec,
+    parserSandboxEntry,
+    runParserSandbox,
+    runParserSandboxWorker,
+} from './openai/parser-sandbox.js';
 export { TEXT_MODEL_PROFILES, textModelProfile, snapEffort } from './model/text.js';
 export { effortFor } from './agent/effort.js';
 export { publishPictures, assetsRel } from './core/publish.js';

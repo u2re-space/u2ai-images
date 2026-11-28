@@ -9,12 +9,17 @@
     "./shared": "./src/shared/shared.js",
     "./protocol": "./src/shared/protocol.js",
     "./worker": "./src/shared/worker.js",
-    "./ramdisk": "./src/access/ramdisk.js"
+    "./ramdisk": "./src/access/ramdisk.js",
+    "./code-mode": "./src/shared/code-mode.js",
+    "./code-libraries": "./src/shared/code-libraries.js",
+    "./parser-sandbox": "./src/openai/parser-sandbox.js"
   },
   "bin": {
     "ai-image": "./bin/ai-image.js",
     "ai-image-worker": "./bin/ai-image-worker.js",
-    "ai-image-agent-worker": "./bin/ai-image-agent-worker.js"
+    "ai-image-agent-worker": "./bin/ai-image-agent-worker.js",
+    "ai-image-code-mode-worker": "./bin/ai-image-code-mode-worker.js",
+    "ai-image-parser-worker": "./bin/ai-image-parser-worker.js"
   },
   "repository": {
     "type": "git",

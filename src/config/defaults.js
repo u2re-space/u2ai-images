@@ -112,6 +112,43 @@ export const defaults = {
         journalDir: '.ai-image/batch',
     },
 
+    // --- the tools of the run ----------------------------------------------------
+    /**
+     * The switches of the tools.
+     *
+     * A tool that is not mentioned here is on: the config lists the exceptions, not the
+     * permissions. The names are the domains, not the wire names: `image_generate` turns off
+     * `generate_image`.
+     */
+    tools: {
+        /** Make a picture from a prompt. */
+        image_generate: true,
+        /** Change a picture with a prompt. */
+        image_edit: true,
+        /** Cut a box out of a picture, or cut its padding off. */
+        image_crop: true,
+        /** Extend the canvas of a picture. */
+        image_pad: true,
+        /** Put a picture into a frame. */
+        image_fit: true,
+        /** Build a real alpha channel for a picture. */
+        image_alpha: true,
+        /** Trace a raster into an SVG document, and edit and tidy the document. */
+        image_vectorize: true,
+        /** Compare pictures. */
+        image_compare: true,
+        /** Look at a picture and describe it. */
+        image_view: true,
+        /** Write a program and run it in a sandbox, instead of calling the tools one by one. */
+        code_mode: true,
+        /** The tools of the house: read a file, list a directory, search. */
+        read: true,
+        write: true,
+        list: true,
+        search: true,
+        skill: true,
+    },
+
     // --- picture knobs --------------------------------------------------------
     image: {
         /** Frame of the picture: a preset, a free WIDTHxHEIGHT or auto. */
@@ -190,6 +227,21 @@ export const defaults = {
             archive: true,
             /** Where the raw answers are kept; null keeps the home directory. */
             archiveDir: null,
+            /**
+             * The libraries the salvage script may reach.
+             *
+             * The script runs in the sandbox of the parser, and it may use the libraries of
+             * the house the same way a program of Code Mode does. Null means all of them —
+             * the ones this package really has.
+             */
+            libraries: null,
+            /**
+             * How long the salvage script may run, in milliseconds.
+             *
+             * The script runs in a worker thread of its own: a loop that never ends is
+             * stopped, and the run of the picture lives.
+             */
+            timeoutMs: 60_000,
         },
     },
 

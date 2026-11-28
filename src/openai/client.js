@@ -927,6 +927,11 @@ export async function createClient({ config, env = process.env, signal = null, o
                 root: parser.root ?? process.cwd(),
                 signal: callSignal ?? signal,
                 archive: parser.archive !== false,
+                // The libraries the salvage script may reach, and how long it may run.
+                libraries: parser.libraries ?? null,
+                timeoutMs: Number.isSafeInteger(parser.timeoutMs) && parser.timeoutMs > 0
+                    ? parser.timeoutMs
+                    : null,
                 onWarn: (message) => announce({ type: 'warning', message }),
                 onArchive: (file) => announce({ type: 'diagnostics.archived', file }),
             });

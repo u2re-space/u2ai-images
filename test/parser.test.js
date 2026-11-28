@@ -61,7 +61,7 @@ test('every form of a payload is normalized', () => {
 test('the sandbox runs the script and gives it the response', async () => {
     const root = await tempDir();
     const result = await runParserScript(
-        'return [response.pictures[0].payload];',
+        'return [JSON.parse(response).pictures[0].payload];',
         { response: { pictures: [{ payload: TINY_PNG }] }, root },
     );
     assert.deepEqual(result.sources, [{ kind: 'b64', value: TINY_PNG }]);
@@ -69,19 +69,25 @@ test('the sandbox runs the script and gives it the response', async () => {
 
 test('the sandbox refuses to write out of the working directory', async () => {
     const root = await tempDir();
-    await assert.rejects(
-        runParserScript('await write("../escaped.png", "x"); return [];', { response: {}, root }),
-        /escapes the working directory/,
+    const result = await runParserScript(
+        'await write("../escaped.png", "x"); return [];',
+        { response: {}, root },
     );
+    // The write is refused, and the refusal is in the record: a script that was told «no»
+    // must not look like a script that found nothing.
+    assert.equal(result.sources.length, 0);
+    assert.ok(result.logs.some((line) => /escapes the working directory/.test(line)), result.logs.join(' | '));
 });
 
 test('the sandbox has no require, process or filesystem', async () => {
     const root = await tempDir();
     const result = await runParserScript(
-        'log(typeof require, typeof process, typeof setTimeout, typeof fetch); return [];',
+        'log(typeof require, typeof process, typeof setTimeout, typeof Buffer); return [];',
         { response: {}, root },
     );
-    assert.deepEqual(result.logs, ['undefined undefined undefined function']);
+    // The realm of the sandbox has none of them: the helpers are facades, and the realm
+    // itself holds nothing of the host.
+    assert.deepEqual(result.logs, ['undefined undefined undefined undefined']);
 });
 
 test('the raw answer is archived and the script runs', async () => {
@@ -96,7 +102,7 @@ test('the raw answer is archived and the script runs', async () => {
         parserModel: 'text/model',
         invoke: async ({ model, prompt }) => {
             asked.push({ model, prompt });
-            return '```js\nreturn [response.data.result.images[0].url];\n```';
+            return '```js\nreturn [JSON.parse(response).data.result.images[0].url];\n```';
         },
         onArchive: (file) => archived.push(file),
     });

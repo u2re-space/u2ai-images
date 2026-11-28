@@ -242,6 +242,17 @@ export function validateConfig(config) {
     if (c.image.parser.archiveDir !== null && typeof c.image.parser.archiveDir !== 'string') {
         fail('image.parser.archiveDir: строка или null');
     }
+    if (c.image.parser.libraries !== null && !Array.isArray(c.image.parser.libraries)) {
+        fail('image.parser.libraries: массив строк или null');
+    }
+    for (const name of c.image.parser.libraries ?? []) {
+        if (typeof name !== 'string' || !name.trim()) {
+            fail('image.parser.libraries: имена библиотек — непустые строки');
+        }
+    }
+    if (!(Number.isSafeInteger(c.image.parser.timeoutMs) && c.image.parser.timeoutMs > 0)) {
+        fail('image.parser.timeoutMs: целое > 0');
+    }
 
     // --- purposes --------------------------------------------------------------------
     if (!isRecord(c.purpose)) fail('purpose должен быть объектом');
@@ -255,6 +266,17 @@ export function validateConfig(config) {
     for (const [key, value] of Object.entries(c.limits)) {
         if (!(key in defaults.limits)) fail(`неизвестный лимит limits.${key}`);
         if (!(Number.isSafeInteger(value) && value > 0)) fail(`limits.${key}: положительное целое`);
+    }
+
+    // --- tools -------------------------------------------------------------------------
+    if (!isRecord(c.tools)) fail('tools должен быть объектом');
+    for (const [key, value] of Object.entries(c.tools)) {
+        if (!(key in defaults.tools)) {
+            fail(`tools.${key}: true | false (известные: ${Object.keys(defaults.tools).join(', ')})`);
+        }
+        if (typeof value !== 'boolean') {
+            fail(`tools.${key}: true | false (известные: ${Object.keys(defaults.tools).join(', ')})`);
+        }
     }
 
     // --- memory -------------------------------------------------------------------------

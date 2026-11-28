@@ -40,21 +40,10 @@ import { sniffImage } from '../openai/images.js';
 import { effortFor } from './effort.js';
 import { resolveInside } from '../access/paths.js';
 import { writeFileAtomic } from '../shared/house.js';
+import { toolSpecs } from './tool-specs.js';
+import { createCodeModeRunner } from './code-mode.js';
 
-/** The names of the tools. */
-export const TOOL_NAMES = Object.freeze([
-    'generate_image',
-    'edit_image',
-    'crop_image',
-    'pad_image',
-    'fit_image',
-    'alpha_image',
-    'vectorize_image',
-    'edit_svg',
-    'polish_svg',
-    'compare_images',
-    'view_image',
-]);
+export { TOOL_NAMES, toolSpecs, enabledToolNames } from './tool-specs.js';
 
 /**
  * The tools of the agent.
@@ -101,7 +90,15 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
      */
     const assetsOf = () => path.resolve(cwd, config?.image?.outputDir ?? '.ai/assets');
 
-    return {
+    /**
+     * The tools of the images, by name.
+     *
+     * The tools are a map and not a bare object: the catalogue needs their names and their
+     * schemas, and the program of Code Mode needs to call them by name.
+     *
+     * @type {Record<string, (args: object) => Promise<object>>}
+     */
+    const tools = {
         /**
          * Make a picture from a prompt.
          * @param {{ prompt: string, output?: string, model?: string|null, size?: string|null,
@@ -467,6 +464,115 @@ export function createImageTools({ client, config = null, cwd = process.cwd(), s
                 signal,
             });
             return { source: result.source, tiles: result.tiles.map((tile) => rel(tile.rel)) };
+        },
+
+        /**
+         * Run a program of the model in the sandbox.
+         *
+         * The program calls the tools of this map — the image API among them — and every
+         * call travels back here, to be run by the very same code with the very same rights.
+         *
+         * @param {{ code: string, purpose?: string, timeoutMs?: number }} args
+         * @returns {Promise<string>}
+         */
+        async code_mode(args = {}) {
+            const runner = createCodeModeRunner({
+                execute: async (name, toolArgs) => {
+                    const tool = tools[name];
+                    if (typeof tool !== 'function') {
+                        throw new Error(`There is no tool named ${name}.`);
+                    }
+                    return await tool(toolArgs ?? {});
+                },
+                specs: toolSpecs(config?.tools),
+                tools: Object.keys(tools),
+                // The API of the pictures, raw: the program may ask the model for a picture
+                // without going through the tool, and take the bytes itself.
+                facilities: {
+                    'images.generate': async (params = {}) => {
+                        const answer = await client.images.generate({
+                            model: params.model ?? config?.imageModel ?? null,
+                            prompt: params.prompt ?? '',
+                            size: params.size ?? config?.image?.size ?? null,
+                            format: params.format ?? config?.image?.format ?? 'png',
+                            background: params.background ?? config?.image?.background ?? 'auto',
+                            n: params.n ?? 1,
+                            signal,
+                        });
+                        return {
+                            payloads: answer.payloads ?? [],
+                            model: answer.model ?? null,
+                            route: answer.route ?? null,
+                        };
+                    },
+                    'images.edit': async (params = {}) => {
+                        const source = await abs(params.input);
+                        const bytes = await readFile(source);
+                        const kind = sniffImage(bytes);
+                        const answer = await client.images.edit({
+                            model: params.model ?? config?.imageModel ?? null,
+                            purpose: 'edit',
+                            prompt: params.prompt ?? '',
+                            files: [{ filename: path.basename(source), mime: kind.mime, bytes }],
+                            size: params.size ?? null,
+                            format: params.format ?? config?.image?.format ?? 'png',
+                            signal,
+                        });
+                        return {
+                            payloads: answer.payloads ?? [],
+                            model: answer.model ?? null,
+                            route: answer.route ?? null,
+                        };
+                    },
+                },
+                signal,
+            });
+            return await runner(args ?? {});
+        },
+    };
+
+    // The specs of the tools: the catalogue of the house and the tools of the images.
+    const specs = toolSpecs(config?.tools);
+
+    /**
+     * Run one tool by name.
+     *
+     * @param {string} name the name of the tool
+     * @param {object} args the arguments of the call
+     * @returns {Promise<object>}
+     */
+    const execute = async (name, args = {}) => {
+        const tool = tools[name];
+        if (typeof tool !== 'function') {
+            throw new Error(`There is no tool named ${name}.`);
+        }
+        return await tool(args ?? {});
+    };
+
+    return {
+        // The tools themselves: a call of a tool is a call of the toolset.
+        ...tools,
+        execute,
+        specs,
+        /**
+         * The names of the tools the toolset may run.
+         *
+         * The program of Code Mode may call the tools of this toolset and nothing else: the
+         * catalogue of the program is the catalogue of the turn.
+         *
+         * @returns {string[]}
+         */
+        toolNames: () => Object.keys(tools),
+        /**
+         * The tool list of one role: the catalogue, cut down to what that role may call.
+         * @param {string} roleName
+         * @param {string[]|null} names
+         * @returns {object[]}
+         */
+        specsFor(roleName, names = null) {
+            if (!names) return specs;
+            const wanted = new Set(names);
+            return specs.filter((spec) => wanted.has(spec.name));
         },
     };
 }

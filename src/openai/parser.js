@@ -4,7 +4,7 @@
  * @purpose The second chance to read a picture out of an answer of an unusual shape: the model
  *          writes a small extraction script for the shape it sees, the script runs in a sandbox
  *          with fetch and file writing, and both the raw answer and the script stay on disk.
- * @depends node:vm, node:path, node:fs/promises, openai/errors, openai/diagnostics, openai/images
+ * @depends node:path, node:fs/promises, openai/diagnostics, openai/images, openai/parser-sandbox
  * @usedBy openai/client
  * @exports describeShape, makeParserInvoke, parseImageResponseWithAI, extractScript, toSource,
  *          runParserScript
@@ -19,19 +19,18 @@
  * are elided, the paths are shown), and the model answers with the one thing that generalizes: a
  * function that walks this particular object and returns the payloads.
  *
- * The script runs in `node:vm`. That is a guardrail, not a security boundary — so it is
- * deliberately narrow: no require, no process, no filesystem, and the only ways out are `fetch`
- * (http/https, capped, abortable) and `write`, which is confined to the working directory. Both
- * are exactly what a picture needs: pull a link the answer only mentions, decode inline base64,
- * and drop the result where the caller can find it.
+ * The script runs in the sandbox of `openai/parser-sandbox`: a realm of `node:vm` inside a
+ * worker thread of its own. The answer crosses as JSON, the helpers are facades that return
+ * primitives, and the calls that need the host travel back to it. The script may pull a link the
+ * answer only mentions, decode inline base64, and drop the result where the caller can find it —
+ * and on top of that it may reach the libraries of the house and the memory of the house.
  */
 
 import path from 'node:path';
-import vm from 'node:vm';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { ApiError } from './errors.js';
 import { saveImageResponse, saveImageParserScript } from './diagnostics.js';
 import { sniffImage } from './images.js';
+import { runParserSandboxWorker } from './parser-sandbox.js';
 
 /** Strings longer than this are elided in the shape sketch: a base64 picture is not worth its tokens. */
 const SHAPE_STRING_MAX = 120;
@@ -129,7 +128,7 @@ The response object, with long strings elided (a path shown as <string N chars> 
 ${shape}
 
 Inside the function these names are defined:
-- response — the full parsed JSON answer, exactly as shown above but with the elided strings intact.
+- response — the full parsed JSON answer, exactly as shown above but with the elided strings intact. It is a JSON **string**: read it with JSON.parse(response).
 - fetchBytes(url) → Promise<Uint8Array|null> — downloads an http(s) URL; null when it fails.
 - decodeBase64(text) → Uint8Array — decodes base64, tolerating a data: prefix and URL-safe alphabet.
 - encodeBase64(bytes) → string.
@@ -137,7 +136,11 @@ Inside the function these names are defined:
 - sniff(bytes) → 'png' | 'jpg' | 'webp' | 'gif' | 'svg' | null — format from magic bytes.
 - write(relPath, data) → Promise<string> — writes a string or bytes under the working directory (path escapes are refused); use it for the extracted picture or any sidecar you must produce.
 - log(...args) — records a diagnostic line.
-- fetch, URL, URLSearchParams, Buffer, TextEncoder, TextDecoder, JSON, Math, Date, atob, btoa.
+- fetch(url, init) → a small response with ok, status, arrayBuffer() and text().
+- fs — a file system in the memory: readFile, writeFile, readdir, stat, unlink, mkdir.
+- shared — the shared block of the run: shared.view is a byte view of it.
+- library.call(path, args) → Promise<any> — the libraries of the house: canvas, the wasm of ImageMagick, openvector. library.catalog() names them and their calls.
+- TextEncoder, TextDecoder, JSON, Math, Date, atob, btoa.
 There is no require, import, process, __dirname, setTimeout, or filesystem access.
 
 Return an array whose items are any of: base64 string, data: URL, http(s) URL, Uint8Array, ArrayBuffer.
@@ -217,27 +220,35 @@ function base64ImageBytes(text) {
         ? bytes : null;
 }
 
-/** JSON for a log line, never throwing on a cyclic value the script handed over. */
-function safeJson(value) {
-    try { return JSON.stringify(value); } catch { return String(value); }
-}
-
 /**
  * Run one salvage script over the answer.
+ *
+ * The script runs in the sandbox of the parser: a realm of `node:vm` inside a worker
+ * thread of its own. The answer crosses as JSON, the helpers are facades that return
+ * primitives, and the calls that need the host travel back here.
+ *
  * @param {string} script The function body the model wrote.
- * @param {{ response: unknown, root: string, signal?: AbortSignal }} options
+ * @param {{ response: unknown, root: string, signal?: AbortSignal|null,
+ *   timeoutMs?: number|null, libraries?: string[]|null }} options
  * @returns {Promise<{ sources: Array<{kind:'b64'|'url', value:string}>, writes: string[], logs: string[] }>}
  * @exports
  * @ai.hint io
  */
-export async function runParserScript(script, { response, root, signal }) {
+export async function runParserScript(script, {
+    response,
+    root,
+    signal = null,
+    timeoutMs = null,
+    libraries = null,
+}) {
     const logs = [];
     const writes = [];
+    const workspace = path.resolve(root ?? process.cwd());
+
     /**
      * Download a link the answer only mentions.
      * @param {unknown} url
      * @returns {Promise<Uint8Array|null>}
-     * @ai.hint io
      */
     const fetchBytes = async (url) => {
         let target;
@@ -248,33 +259,19 @@ export async function runParserScript(script, { response, root, signal }) {
         const bytes = new Uint8Array(await res.arrayBuffer());
         return bytes.length > FETCH_MAX_BYTES ? null : bytes;
     };
-    /**
-     * Decode base64, tolerating a data: prefix and the URL-safe alphabet.
-     * @param {unknown} text
-     * @returns {Uint8Array}
-     * @ai.hint pure
-     */
-    const decodeBase64 = (text) => {
-        let body = String(text ?? '').trim();
-        const comma = body.indexOf(',');
-        if (body.startsWith('data:') && comma > 0) body = body.slice(comma + 1);
-        body = body.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
-        if (!body) return new Uint8Array();
-        return new Uint8Array(Buffer.from(body, 'base64'));
-    };
+
     /**
      * Write a file inside the working directory; the paths out of it are refused.
      * @param {unknown} rel
      * @param {unknown} data
      * @returns {Promise<string>}
-     * @ai.hint io
      */
     const write = async (rel, data) => {
         const requested = String(rel ?? '').trim();
         if (!requested) throw new Error('write: path is required');
         if (path.isAbsolute(requested)) throw new Error(`write: absolute path refused: ${requested}`);
-        const abs = path.resolve(root, requested);
-        if (abs !== root && !abs.startsWith(root + path.sep)) {
+        const abs = path.resolve(workspace, requested);
+        if (abs !== workspace && !abs.startsWith(workspace + path.sep)) {
             throw new Error(`write: path escapes the working directory: ${requested}`);
         }
         const bytes = typeof data === 'string'
@@ -288,51 +285,34 @@ export async function runParserScript(script, { response, root, signal }) {
         writes.push(posix);
         return posix;
     };
-    const sandbox = {
-        response,
-        fetch: (url, init) => fetch(url, { ...init, signal }),
-        fetchBytes,
-        decodeBase64,
-        encodeBase64: (bytes) => Buffer.from(bytes ?? []).toString('base64'),
-        imageDataUrl: (bytes, mime = 'image/png') => `data:${mime};base64,${Buffer.from(bytes ?? []).toString('base64')}`,
-        sniff: (bytes) => {
-            const buffer = bytes instanceof Uint8Array ? Buffer.from(bytes) : Buffer.from(bytes ?? []);
-            const kind = sniffImage(buffer);
-            return buffer.length ? kind.ext : null;
+
+    const report = await runParserSandboxWorker({
+        spec: {
+            script,
+            response,
+            root: workspace,
+            timeoutMs: timeoutMs ?? SCRIPT_TIMEOUT_MS,
+            libraries,
         },
-        write,
-        log: (...args) => {
-            if (logs.length < LOG_MAX_LINES) {
-                logs.push(args.map((a) => (typeof a === 'string' ? a : safeJson(a))).join(' '));
-            }
+        onWrite: async (rel, data) => await write(rel, data),
+        onFetch: async (url) => await fetchBytes(url),
+        onLog: (line) => {
+            if (logs.length < LOG_MAX_LINES) logs.push(line);
         },
-        URL, URLSearchParams, Buffer, TextEncoder, TextDecoder, JSON, Math, Date,
-        atob: (value) => Buffer.from(String(value), 'base64').toString('binary'),
-        btoa: (value) => Buffer.from(String(value), 'binary').toString('base64'),
-    };
-    const context = vm.createContext(sandbox);
-    const run = vm.runInContext(`(async () => {\n${script}\n})()`, context, {
-        timeout: SCRIPT_TIMEOUT_MS,
-        displayErrors: true,
+        signal,
     });
-    let timer = null;
-    const deadline = new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new ApiError(
-            'The salvage script did not finish in time.',
-            { code: 'INVALID_RESPONSE' },
-        )), SCRIPT_TIMEOUT_MS);
-    });
-    let returned;
-    try {
-        returned = await Promise.race([Promise.resolve(run), deadline]);
-    } finally {
-        if (timer) clearTimeout(timer);
-    }
-    const list = Array.isArray(returned) ? returned : [returned];
+
     const sources = [];
+    const list = Array.isArray(report.value) ? report.value : [report.value];
     for (const item of list.slice(0, MAX_PAYLOADS)) {
         const source = toSource(item);
         if (source) sources.push(source);
+    }
+    // A refusal of the host is part of the record: a script that was told «no» must not
+    // look like a script that found nothing.
+    const refusals = Array.isArray(report.refusals) ? report.refusals : [];
+    for (const refusal of refusals) {
+        if (logs.length < LOG_MAX_LINES) logs.push(`refused: ${refusal}`);
     }
     return { sources, writes, logs };
 }
@@ -355,6 +335,7 @@ export async function runParserScript(script, { response, root, signal }) {
 export async function parseImageResponseWithAI({
     result, route = 'images', model = null, host = null, taskId = null,
     invoke = null, parserModel = null, root = null, signal, onWarn = null, onArchive = null, archive = true,
+    libraries = null, timeoutMs = null,
 }) {
     const savedFile = archive ? await saveImageResponse(result, { route, model, host, taskId }) : null;
     try { onArchive?.(savedFile); } catch { /* an observer never breaks the request */ }
@@ -374,7 +355,13 @@ export async function parseImageResponseWithAI({
             warn(`Fallback parse: the model ${parserModel} returned no salvage script.`);
             return null;
         }
-        const { sources, writes, logs } = await runParserScript(script, { response: result, root: workspace, signal });
+        const { sources, writes, logs } = await runParserScript(script, {
+            response: result,
+            root: workspace,
+            signal,
+            timeoutMs,
+            libraries,
+        });
         if (!sources.length) {
             warn(`Fallback parse: the script from ${parserModel} found no picture`
                 + `${logs.length ? `; log: ${logs.join(' | ').slice(0, 400)}` : ''}.`);
